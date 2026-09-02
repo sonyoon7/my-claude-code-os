@@ -9,12 +9,13 @@
 | `03-orchestration` | 10.4 | 지휘자의 실제 호출 순서 (시퀀스) |
 | `04-shared-agents` | 10.5 | 공유 서브에이전트 재사용 관계 |
 | `05-data-flow` | 10.6 | 훅이 쓰고 스킬이 읽는 데이터 흐름 |
+| `06-context-map` | `context-map` 스킬 참고 | 세션 시작 시 항상/온디맨드/비용 0으로 나뉘는 컨텍스트 5계층 구조. 다른 다섯 개와 달리 "지금 이 순간의 수치"가 아니라 "이런 종류는 이렇게 분류된다"는 정적 구조도라, `context-map` 스킬을 실행할 때마다 다시 그리지 않는다 |
 
 ## 다시 생성하기
 
 ```bash
 cd docs/diagrams
-for f in 01-pipeline-spec 02-pipeline-build 03-orchestration 04-shared-agents 05-data-flow; do
+for f in 01-pipeline-spec 02-pipeline-build 03-orchestration 04-shared-agents 05-data-flow 06-context-map; do
   npx -y @mermaid-js/mermaid-cli@11 -i "$f.mmd" -o "$f.svg" -c mermaid-config.json -b white
 done
 ```
