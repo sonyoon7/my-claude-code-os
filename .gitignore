@@ -25,3 +25,11 @@
 # (.claude/tests/fixtures/session-board/sessions/ 는 고정 픽스처라 커밋 대상이므로
 #  'sessions/' 가 아니라 정확한 경로로 적는다)
 .claude/sessions/
+
+# notion-min MCP 서버의 Notion integration 토큰. 이 저장소는 공개 커밋되므로
+# 토큰은 .mcp.json(커밋됨)이 아니라 여기 gitignore된 파일이나 환경변수로만 받는다.
+.claude/.notion-token
+
+# MCP 프로토콜 도청기(probe.js)가 남기는 관측 로그. 일회성 조사 산출물이고
+# 내용이 매 실행마다 달라져 big-change-commit-check.js를 계속 재발동시킨다.
+.claude/mcp-servers/**/.probe.log
