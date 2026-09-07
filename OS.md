@@ -81,7 +81,8 @@
 - [x] 이 OS를 어떤 대상에 적용할 것인가? → **이 저장소(`my-claude-code-os`) 자체로 확정**(2026-08-26). 뼈대의 dry-run 요구사항도 이 저장소의 실제 다음 기능(예: skill-stat 기능 추가)으로 삼기로 함(9장 참고).
 - [x] 정책 승인 게이트(04단계)를 AskUserQuestion 대화형으로 할지, PR 승인 방식으로 할지 → **AskUserQuestion으로 결정**(2026-08-26). `atdd-orchestrator` 스킬은 대화형으로 실행되므로 PR 리뷰 흐름이 자연스럽게 들어맞지 않고, AskUserQuestion을 쓰면 스킬 호출 안에서 바로 사람의 승인/반려를 받을 수 있어 더 적합하다고 판단.
 - [x] TDD 구현 루프(06단계)에 재시도 상한을 둘지, 두면 몇 회로 할지 → **3회로 확정**(2026-08-27). 온보딩 7페이지 "티켓 처리" 예시의 3회 상한을 그대로 따랐다. 함께 정한 것: **04→02 재분해에는 상한을 두지 않는다.** 스펙을 고치는 논의는 값싸고 정확도를 올리지만, 구현 삽질은 비싸고 되풀이할수록 나빠지기 때문이다. 상한 초과 시 AI가 스스로 더 시도하지 않고 사람에게 인계한다.
-- [ ] 승인된 인수기준을 세션 사이에 어디에 저장할 것인가 — 지금은 대화 컨텍스트에만 있어서 세션이 끊기면 04단계 승인 결과가 사라진다(9장 "상태 관리" 항목)
+- [ ] 승인된 인수기준을 세션 사이에 어디에 저장할 것인가 — 지금은 대화 컨텍스트에만 있어서 세션이 끊기면 04단계 승인 결과가 사라진다(9장 "상태 관리" 항목).
+  **2026-09-07 부분 진전**: 세션 인계 계층(`.claude/sessions/`)이 생겨 "직전 세션이 무엇을 하다 멈췄는가"의 **서술적** 힌트는 새 세션에 자동으로 이어진다. 하지만 승인된 AC를 **구조화해** 보관하지는 않으므로 이 질문은 열린 채로 둔다 — `lastMessage` 240자는 인계 단서이지 상태 저장이 아니다.
 - [ ] `lastUsedAt` 비교를 문자열 사전순이 아니라 실제 시각으로 해야 한다는 리뷰어 지적을 AC-9로 추가할지 — 이번 사이클에서는 **승인 범위 밖이라 일부러 넣지 않았다.** 승인 게이트를 우회해 슬쩍 넣는 순간 04단계가 무의미해지기 때문. 다음 사이클의 요구사항으로 올린다.
 - [x] `ui-visual-reviewer`가 스크린샷을 찍는 데 쓰는 `claude-in-chrome`이 '제로 디펜던시' 철학과 어떤 관계인지 → **실제로 걸림을 확인**(2026-08-28). 확장 미설치 상태에서 dry-run을 돌렸더니 자동 스크린샷이 막혔고, 사람이 브라우저로 직접 열어 스크린샷을 제공하는 수동 대안으로 우회했다. 즉 `claude-in-chrome`은 "있으면 자동화, 없으면 사람이 대신하는" 선택적 의존으로 남겨둔다 — 06단계 절차에 하드 요구사항으로 넣지 않는다.
 - *(참고, 설계 대상 아님, 2026-09-02)* Confluence/Slack 연동은 이번 범위에서 제외한다. 나중에 붙일 때는 세션 시작 시 미리 캐싱하는 방식보다 **필요할 때 MCP로 조회하는 방식**을 권장 — 이번 세션에 이미 연결된 notion MCP가 그 이음새(seam)를 그대로 보여준다.
@@ -109,6 +110,14 @@
   ② `docs/diagrams/06-context-map.mmd`는 스킬을 실행할 때마다 다시 그리지 않는 **정적** 다이어그램으로 뒀다. 다섯 계층이 "이런 종류로 나뉜다"는 분류 자체는 자주 안 바뀌는데, `context-map` 스킬의 텍스트 보고서가 이미 "지금 이 순간의 수치"를 담당하기 때문이다.
   ③ 새 훅은 **의도적으로 만들지 않았다.** `context-map`이 읽는 것(CLAUDE.md, 스킬/에이전트 파일, settings.json)은 전부 디스크에 이미 있는 정적 소스이지, 사람/AI가 바쁠 때 깜빡할 수 있는 누적 로그가 아니다. "훅이 쓰고 스킬이 읽는다"는 원칙은 후자에만 필요하다.
   구현 중 실제로 겪은 함정 하나: `index.md`에 "이렇게 추가하세요"라는 예시를 마크다운 코드블록(\`\`\`) 안에 `@경로` 형태로 적었더니, `parseImportLines`가 코드블록을 구분하지 못해 그 예시 줄을 **진짜 import로 인식**해 존재하지 않는 파일을 `missing`으로 보고했다 — `context-map`을 실제 저장소에 돌려보고서야 발견했다. 코드블록 인식 로직을 추가하는 대신, 예시 자체를 줄 맨 앞에 `@`가 오지 않는 문장 속 인라인 코드로 바꿔 근본 원인을 없앴다. **파서를 더 똑똑하게 만들기보다, 파서가 오해할 수 없는 형태로 입력을 쓰는 쪽이 더 단순하고 안전할 때가 있다.**
+- **2026-09-07 — 세션 인계·협업 계층을 추가함.** 사용자가 "다른 세션들이 뭘 하는지 확인하고 컨텍스트를 바로 이어 가고 싶다"를 요구사항으로 던졌다. 요구는 둘("새 세션이 이전 맥락을 알고 시작" + "동시 세션끼리 실시간으로 주고받기")이었지만 자료구조 하나(`.claude/sessions/<session_id>.json`, 세션당 파일 1개)로 둘 다 풀렸다. 결정 다섯 가지:
+  ① **단일 보드 파일이 아니라 세션당 파일 1개.** 여러 세션이 한 JSON을 동시에 read-modify-write 하면 갱신이 유실된다. 파일을 쪼개면 각 파일의 필자가 그 세션 하나뿐이라 **락이 아예 필요 없다** — 동시성 문제를 푸는 대신 발생하지 않게 만든 셈이다. 파일 하나가 깨져도 `listSessions`가 그 파일만 건너뛴다.
+  ② **"무엇을 하다 멈췄는지"를 사람도 AI도 따로 쓰지 않는다.** `Stop` 훅이 stdin으로 `last_assistant_message`(그 턴의 마지막 응답)를 받는다는 걸 문서에서 확인하고, 그걸 240자로 잘라 저장했다. AI를 한 번도 더 호출하지 않고 서술적 인계문이 생기며, "훅만 쓰고 스킬은 읽는다"는 기존 원칙도 깨지 않는다. 세션 끝에 인계문을 쓰는 규율에 의존했다면 바쁠 때 빠졌을 것이다 — `atdd-failure-log.js` 때와 같은 판단이다.
+  ③ **실시간 채널은 새로 만들지 않았다.** `ListAgents`(누가 살아있나)와 `SendMessage`(전달)가 이미 내장이다. 파일 기반 메시지 큐를 만들면 실시간성만 잃는다. OS가 더한 것은 "저 세션이 지금 무슨 파일을 만지는가"라는 **맥락**뿐이고, 그건 파일이 잘하는 일이다. 즉 **비동기·영속은 파일, 동기·실시간은 도구**로 갈랐다.
+  ④ **충돌을 감지해도 막지 않는다.** `PreToolUse(Edit|Write)` 훅이 `permissionDecision:"deny"`를 낼 수 있었지만 `additionalContext` 경고만 낸다. 훅은 "다른 세션이 4분 전에 만졌다"는 사실만 알 뿐 그게 진짜 충돌인지는 모른다. **규율은 훅, 판단은 AI, 결정은 사람** — `os-retro-check.js`가 커밋을 막지 않고 되묻게만 하는 것과 같다.
+  ⑤ **`displayName` 한 필드만 스킬이 쓰는 예외를 뒀다.** `ListAgents`가 주는 표시 이름은 훅이 알 수 없고(훅은 도구를 호출할 수 없다), 그 대괄호 ref는 훅이 받는 `session_id`와 **별도 id 공간**이라 사후 매칭도 불가능하다. 자기 이름을 아는 주체가 세션 자신뿐이라 예외가 불가피했다. 대신 예외를 최대한 좁혔다 — 자기 파일의 그 한 필드뿐이고, AC-14가 다른 필드를 건드리지 않음을 검증한다. 매칭이 안 될 때는 억지로 잇지 않고 보드와 `ListAgents`를 **나란히** 보여준다(`context-map`이 끊어진 import를 `missing`으로 정직하게 표시하는 것과 같은 태도).
+  착수 전에 발견해서 다행이었던 함정: `.claude/sessions/`를 `.gitignore`에 넣는 건 취향이 아니라 **동작 전제**였다. `big-change-commit-check.js`는 `git status --porcelain` 전체를 sha256 서명하는데, 하트비트가 매 턴 추적 대상 파일을 쓰면 서명이 매 턴 달라져 그 훅이 무한 재발동한다. 게다가 untracked 파일마다 `filesChanged += 1` 하므로 세션 파일 5개만 쌓여도 임계값(5개)을 자기 자신만으로 넘긴다. **2026-08-28에 `.commit-check-state.json`으로 이미 겪은 바로 그 버그**여서, 그때의 해법을 그대로 반복했다. 훅이 파일을 쓰는 기능을 새로 만들 때는 그 파일이 `git status`에 잡히는지부터 보는 게 이 저장소의 습관이 되어야 한다.
+  검증의 한계도 남긴다: `lastMessage`는 대화 일부를 평문으로 로컬에 남긴다. 240자 컷·개행 접기·명백한 시크릿 접두사(`sk-`/`ghp_`/`AKIA`) 마스킹까지만 하고 그 이상은 하지 않았다 — 완전한 비식별화는 이 계층이 감당할 수 있는 문제가 아니다. 숨기는 대신 `SKILL.md`와 여기에 명시했다.
 
 ## 9. 디벨롭에 필요한 기능 정리
 
@@ -127,7 +136,8 @@
 | — 공유 서브에이전트 | ✅ 동작 | `test-reviewer` — 05(`TEST_QUALITY`)와 06(`IMPL_HONESTY`)에서 모드만 바꿔 재사용. `policy-reviewer`도 `atdd-orchestrator`·`spec-decompose` 양쪽에서 공유 |
 | — (조건부) UI 스펙 추출 | ✅ 동작 (2026-08-28 첫 dry-run 완료, 사람 오버라이드 2회 포함) | `ui-spec-from-image` 스킬 — 이미지가 첨부된 경우 02단계 전에 위임되어 레이아웃/컴포넌트/텍스트/색상을 `ui-spec.md`로 정리 |
 | — (조건부) UI 구조·시각 검증 | ✅ 동작 (2026-08-28 첫 dry-run 완료, 사람 오버라이드 2회 포함) | `dom-lite.js`(경량 HTML/CSS 파서, jsdom 미도입, 12개 AC로 자체 검증 완료)로 05단계 구조 테스트, `ui-visual-reviewer` 서브에이전트로 06단계 스크린샷 vs 원본 목업 시각 비교. 3회 재시도 상한은 구조 테스트와 공유 |
-| 상태 관리 | ⏳ 미정 | 지금 파이프라인이 몇 단계에 있는지, 승인된 정책이 무엇인지 저장할 곳 — 없으면 오케스트레이터가 매번 처음부터 다시 설명해야 함. **세션이 끊기면 승인 결과가 사라지는 문제가 실제로 확인됨** |
+| 상태 관리 | 🔧 뼈대만 (2026-09-07) | 세션 인계 계층으로 **"직전 세션이 어디까지 했나"의 서술적 인계는 동작**한다. 그러나 지금 파이프라인이 몇 단계에 있는지, 04단계에서 승인된 AC가 무엇인지를 **구조화해 저장하는 일은 여전히 미정** — 7장 열린 질문으로 남아 있다 |
+| 세션 인계·협업 계층 | ✅ 동작 (2026-09-07 추가) | `.claude/sessions/<session_id>.json`(세션당 파일 1개, gitignore)에 훅 4개가 기록 — `session-register`(SessionStart, 인계 브리핑 자동 주입 + 정리), `session-heartbeat`(Stop, `last_assistant_message`로 "뭘 하다 멈췄나" 기록), `session-close`(SessionEnd), `session-conflict-warn`(PreToolUse Edit\|Write, 살아있는 다른 세션과 같은 파일이면 경고만). 조회는 `session-board` 스킬, 발신은 `session-relay` 스킬(`ListAgents`+`SendMessage`에 위임, 사람 승인 필수). 집계 로직은 `.claude/lib/session-board.js` + AC-1~14. ATDD 파이프라인 밖 |
 | 결과 가시화 | ✅ 동작 | `atdd-status` 스킬 — 구성요소·단계별 동작 여부·현재 초록불/빨간불을 한 화면으로. 호출 횟수는 `skill-stat`, 실패 이력은 `failure-ledger`가 분담 |
 | 개인 가이드라인 계층 | 🔧 뼈대만 | `.claude/context/` — `CLAUDE.md`가 `index.md`를 `@import`하는 구조는 동작하지만, 실제 개인 지침 내용은 아직 하나도 없음(2026-09-02) |
 | 컨텍스트 지도 | ✅ 동작 | `context-map` 스킬 — 세션 시작 시 항상 로드되는 것(CLAUDE.md 계열, 스킬/에이전트 요약)과 온디맨드로만 로드되는 것(스킬·에이전트 본문), 컨텍스트 비용이 0인 훅을 계층별로 보여줌. ATDD 파이프라인 밖 |
@@ -159,7 +169,7 @@
 │   ├── policy-reviewer.md         인수기준이 요구사항을 커버하는가        (03단계) ★공유
 │   ├── test-reviewer.md           테스트/구현이 정직한가                 (05·06단계) ★공유
 │   └── ui-visual-reviewer.md      목업 이미지 vs 스크린샷 시각 일치       (06단계 UI 게이트)
-├── skills/                      스킬 11개
+├── skills/                      스킬 13개
 │   ├── atdd-orchestrator/         7단계 전체를 지휘 (아무것도 직접 하지 않음)
 │   ├── requirement-interview/     01.5 모호한 요구사항 → 인터뷰 브리프 (동결), 그리고 멈춤
 │   ├── spec-decompose/            02 요구사항/브리프 → 인수기준, 그리고 멈춤
@@ -169,23 +179,31 @@
 │   ├── failure-ledger/            07 실패 원장 조회·반복 실패 분석
 │   ├── atdd-status/               ATDD 파이프라인 현황 한 화면 (조회 전용)
 │   ├── context-map/               세션 시작 시 로드되는 컨텍스트 지도 (조회 전용) — 파이프라인 밖
+│   ├── session-board/             세션들이 서로 무엇을 하고 있는가 (조회 전용) — 파이프라인 밖
+│   ├── session-relay/             다른 세션에 실시간 발신 (사람 승인 필수) — 파이프라인 밖
 │   ├── skill-stat/                스킬 호출 통계          — 파이프라인 밖
 │   └── git-commit-message/        커밋 메시지 초안        — 파이프라인 밖
 ├── context/                     개인 업무 가이드라인 계층 (CLAUDE.md가 @import)
 │   ├── README.md                  컨벤션 설명
 │   └── index.md                   실제 지침 파일 레지스트리 (아직 뼈대만, 2026-09-02)
-├── hooks/                       훅 4개 — 모두 best-effort(실패해도 작업을 막지 않음)
+├── hooks/                       훅 8개 — 모두 best-effort(실패해도 작업을 막지 않음)
 │   ├── log-skill-usage.js         PostToolUse/Skill → skill-usage-stats.json
 │   ├── atdd-failure-log.js        PostToolUse/Bash  → atdd-failure-ledger.json  (node --test 출력만 파싱)
 │   ├── os-retro-check.js          Stop              → OS.md 반영 여부를 AI가 되묻게 함 (직접 쓰지 않음, .os-retro-state.json으로 중복 알림 방지)
-│   └── big-change-commit-check.js Stop              → 커밋 안 된 변경이 크면 AI가 커밋 여부를 되묻게 함 (직접 커밋하지 않음, .commit-check-state.json으로 중복 알림 방지)
+│   ├── big-change-commit-check.js Stop              → 커밋 안 된 변경이 크면 AI가 커밋 여부를 되묻게 함 (직접 커밋하지 않음, .commit-check-state.json으로 중복 알림 방지)
+│   ├── session-register.js        SessionStart      → sessions/<id>.json 등록 + 인계 브리핑을 additionalContext로 주입 (800자 상한) + 오래된 파일 정리
+│   ├── session-heartbeat.js       Stop              → 하트비트·턴 수·last_assistant_message 갱신 (stdout 없음 — 다른 Stop 훅의 결정에 끼어들지 않음)
+│   ├── session-close.js           SessionEnd        → endedAt/endReason 기록 (없으면 강제 종료로 보고 stale 표시)
+│   └── session-conflict-warn.js   PreToolUse(Edit|Write) → 살아있는 다른 세션이 같은 파일을 만졌으면 경고만 (deny 하지 않음)
 ├── lib/
 │   ├── interview-brief.js         검증 가능한 로직 (requirement-interview용) — 브리프 슬롯 결손·플레이스홀더·범위밖 잠금 검사
 │   ├── stats.js                   검증 가능한 로직 (skill-stat용)
-│   └── context-map.js             검증 가능한 로직 (context-map용) — @import 트리 해석, 스킬/에이전트/훅 집계
+│   ├── context-map.js             검증 가능한 로직 (context-map용) — @import 트리 해석, 스킬/에이전트/훅 집계
+│   └── session-board.js           검증 가능한 로직 (session-board용) — 생존 판정, 보드 집계, 인계 브리핑 생성, 충돌 탐지
 └── tests/
     ├── stats.test.js              AC-1~8 인수 테스트
-    └── context-map.test.js        AC-1~10 인수 테스트
+    ├── context-map.test.js        AC-1~10 인수 테스트
+    └── session-board.test.js      AC-1~14 인수 테스트
 ```
 
 > **설계 노트**: `lib/`과 `tests/`가 생긴 이유는 05단계 때문이다. 스킬은 마크다운 지시문이라 자동 테스트가 불가능하다. 그래서 **검증할 것은 `lib/`의 코드로, 보여줄 것은 `skills/`의 지시문으로** 나눈다. 앞으로 새 기능도 이 분리를 따른다.
@@ -234,6 +252,10 @@
 ![데이터 흐름](docs/diagrams/05-data-flow.svg)
 
 화살표가 **한 방향으로만 흐른다**는 점이 중요하다. 훅(빨강)만 데이터 파일(회색)에 쓰고, 스킬(초록)은 읽기만 한다. 두 데이터 파일 모두 로컬 실행 데이터이므로 `.gitignore`에 넣었다.
+
+**2026-09-07 추가 — 세션 인계 계층도 같은 규칙을 따른다.** `.claude/sessions/<session_id>.json`은 훅 4개(`session-register`/`session-heartbeat`/`session-close`/`session-conflict-warn`)만 쓰고, `session-board`·`session-relay` 스킬은 읽기만 한다. 딱 하나 예외가 `displayName` 필드인데, `ListAgents`가 주는 표시 이름은 훅이 알 수 없고(훅은 도구를 호출할 수 없다) 그 id 공간이 `session_id`와 달라 사후 매칭도 불가능해서, 자기 이름을 아는 유일한 주체인 세션 자신이 그 한 필드만 채운다. 예외를 없앨 수 없다면 최대한 좁히고 그 이유를 적어 두는 쪽을 택했다.
+
+한 가지 더 중요한 차이: 기존 두 데이터 파일은 **한 저장소에 하나**지만 세션 파일은 **세션마다 하나**다. 여러 세션이 동시에 도는 상황에서 단일 파일을 함께 고치면 갱신이 유실되는데, 파일을 쪼개면 각 파일의 필자가 한 명뿐이라 락 없이도 안전하다.
 
 > **다이어그램 원본**: 위 5개 그림의 Mermaid 소스와 재생성 방법은 [`docs/diagrams/`](docs/diagrams/)에 있다. 그림을 고칠 때는 SVG가 아니라 `.mmd`를 고치고 다시 생성한다.
 

@@ -242,3 +242,60 @@ test("AC-12: selectPrunable은 살아있는 세션과 자기 자신을 절대 �
   );
 });
 
+// ── Layer 2: 세션 간 실시간 협업 ────────────────────────────────────────────
+
+test("AC-13: findConflicts는 살아있는 다른 세션의 최근 편집만 잡는다", () => {
+  const { findConflicts } = require("../lib/session-board.js");
+  const projectDir = path.join(FIXTURES, "project-conflict");
+  const target = ".claude/lib/session-board.js";
+
+  const hit = findConflicts({ projectDir, currentSessionId: LIVE_1, filePath: target, now: FIXED_NOW });
+
+  assert.equal(hit.conflicts.length, 1, "살아있는 다른 세션 하나만 잡혀야 한다");
+  assert.equal(hit.conflicts[0].sessionId, LIVE_2);
+  assert.ok(hit.message && hit.message.includes(target), "경고 문구에 파일 경로가 들어가야 한다");
+
+  // 자기 자신은 충돌 상대가 아니다. stale·ended 세션도 마찬가지다 —
+  // 이미 끝난 세션이 과거에 만졌다는 이유로 경고하면 경고가 소음이 된다.
+  const ids = hit.conflicts.map((c) => c.sessionId);
+  assert.ok(!ids.includes(LIVE_1));
+  assert.ok(!ids.includes(STALE), "stale 세션이 같은 파일을 만졌어도 제외한다");
+  assert.ok(!ids.includes(ENDED));
+
+  // 아무도 안 만진 파일이면 조용하다. message가 null이면 훅은 아무것도 출력하지 않는다.
+  const quiet = findConflicts({ projectDir, currentSessionId: LIVE_1, filePath: "README.md", now: FIXED_NOW });
+  assert.deepEqual(quiet.conflicts, []);
+  assert.equal(quiet.message, null);
+
+  // 시간창 밖의 편집은 "지금 작업 중"이 아니다.
+  const stale = findConflicts({ projectDir, currentSessionId: LIVE_1, filePath: target, now: FIXED_NOW, windowMs: 60 * 1000 });
+  assert.deepEqual(stale.conflicts, []);
+  assert.equal(stale.message, null);
+});
+
+test("AC-14: recordDisplayName은 자기 파일의 그 필드만 고치고 다른 필드를 지우지 않는다", () => {
+  const { recordDisplayName } = require("../lib/session-board.js");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "session-board-"));
+  const sessionsDir = path.join(tmp, ".claude", "sessions");
+  fs.mkdirSync(sessionsDir, { recursive: true });
+
+  const filePath = path.join(sessionsDir, `${LIVE_1}.json`);
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify({ sessionId: LIVE_1, turns: 7, lastMessage: "건드리면 안 되는 값", displayName: null }, null, 2)
+  );
+
+  assert.equal(recordDisplayName({ projectDir: tmp, sessionId: LIVE_1, displayName: "my-claude-code-os-25" }), true);
+
+  const after = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  assert.equal(after.displayName, "my-claude-code-os-25");
+  assert.equal(after.turns, 7, "훅이 쓰는 필드를 스킬이 덮어쓰면 안 된다");
+  assert.equal(after.lastMessage, "건드리면 안 되는 값");
+
+  // 훅이 먼저 등록한 세션만 대상이다. 파일이 없으면 만들지 않는다.
+  const missing = `f0000000-0000-4000-8000-000000000000`;
+  assert.equal(recordDisplayName({ projectDir: tmp, sessionId: missing, displayName: "없는세션" }), false);
+  assert.equal(fs.existsSync(path.join(sessionsDir, `${missing}.json`)), false);
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

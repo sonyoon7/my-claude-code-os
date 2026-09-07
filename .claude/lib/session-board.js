@@ -21,6 +21,8 @@ const path = require("node:path");
 
 /** 하트비트가 이 시간 넘게 안 오면 죽은 세션으로 본다. */
 const STALE_AFTER_MS = 30 * 60 * 1000;
+/** 이 시간 안에 만진 파일만 "지금 작업 중"으로 보고 충돌 경고를 낸다. */
+const CONFLICT_WINDOW_MS = 30 * 60 * 1000;
 /** 세션 하나가 기억하는 최근 편집 파일 수. */
 const MAX_RECENT_FILES = 20;
 /** lastMessage 저장 상한. 코드블록이 통째로 들어가는 걸 막는다. */
@@ -328,8 +330,104 @@ function selectPrunable(sessions, options = {}) {
   return [...picked];
 }
 
+/**
+ * 지금 편집하려는 파일을 최근에 만진 "살아있는 다른 세션"을 찾는다.
+ *
+ * 자기 자신, stale/ended 세션, windowMs 밖의 기록은 제외한다 — 이미 끝난 세션이
+ * 과거에 만졌다는 이유로 경고하면 경고가 소음이 되고, 소음이 된 경고는 무시된다.
+ *
+ * 충돌이 없으면 message가 null이다. 호출한 훅은 message가 null이면 아무것도 출력하지 않는다.
+ */
+function findConflicts({
+  projectDir,
+  currentSessionId = null,
+  filePath,
+  now = Date.now(),
+  windowMs = CONFLICT_WINDOW_MS,
+  staleAfterMs = STALE_AFTER_MS,
+  fsOverrides = {},
+}) {
+  const empty = { conflicts: [], message: null };
+  if (typeof filePath !== "string" || filePath === "") return empty;
+
+  const sessionsDir = path.join(projectDir, ".claude", "sessions");
+  const conflicts = [];
+
+  for (const entry of listSessions(sessionsDir, fsOverrides)) {
+    if (entry.sessionId === currentSessionId) continue;
+    if (classifyLiveness(entry, { now, staleAfterMs }) !== "live") continue;
+
+    const touch = entry.recentFiles.find((f) => f.path === filePath);
+    if (!touch) continue;
+    const at = toTimestamp(touch.at);
+    if (at === null || now - at > windowMs) continue;
+
+    conflicts.push({
+      sessionId: entry.sessionId,
+      displayName: entry.displayName,
+      shortId: entry.sessionId.slice(0, 6),
+      at: touch.at,
+      ago: formatRelative(touch.at, now),
+    });
+  }
+
+  if (conflicts.length === 0) return empty;
+  conflicts.sort(byRecency("at"));
+
+  const who = conflicts
+    .map((c) => `${c.shortId}\u2026${c.displayName ? `(${c.displayName})` : ""}가 ${c.ago}`)
+    .join(", ");
+  return {
+    conflicts,
+    message:
+      `[세션 충돌 경고] ${filePath} 는 살아있는 다른 세션 ${who}에 편집했습니다. ` +
+      "덮어쓰기 전에 /session-board 로 확인하거나 /session-relay 로 그쪽 세션에 물어보세요.",
+  };
+}
+
+/**
+ * 이 모듈에서 파일시스템에 직접 쓰는 유일한 함수 — 의도적으로 좁게 낸 예외다.
+ *
+ * 왜 훅이 못 하고 스킬이 해야 하는가:
+ *   ListAgents가 주는 표시 이름("my-claude-code-os-25")은 훅이 알 수 없다. 훅은 도구를
+ *   호출할 수 없기 때문이다. 게다가 ListAgents의 대괄호 ref는 훅이 받는 session_id와
+ *   별도 id 공간이라 사후 매칭도 불가능하다. 자기 이름을 아는 주체는 세션 자신뿐이므로,
+ *   세션(=스킬)이 자기 파일의 이 한 필드만 채운다.
+ *
+ * 자기 파일의 displayName 외에는 아무것도 건드리지 않고, 파일이 없으면 만들지 않는다
+ * (훅이 먼저 등록한 세션만 대상이다).
+ * @returns {boolean} 기록했으면 true
+ */
+function recordDisplayName({ projectDir, sessionId, displayName, fsOverrides = {} }) {
+  const {
+    readFileSync = fs.readFileSync,
+    existsSync = fs.existsSync,
+    writeFileSync = fs.writeFileSync,
+  } = fsOverrides;
+
+  const safeId = sanitizeSessionId(sessionId);
+  const name = asString(displayName);
+  if (!safeId || !name) return false;
+
+  const filePath = path.join(projectDir, ".claude", "sessions", `${safeId}.json`);
+  try {
+    if (!existsSync(filePath)) return false;
+    const raw = JSON.parse(readFileSync(filePath, "utf-8"));
+    if (!raw || typeof raw !== "object") return false;
+    if (raw.displayName === name) return true;
+
+    raw.displayName = name;
+    raw.updatedAt = new Date().toISOString();
+    writeFileSync(filePath, `${JSON.stringify(raw, null, 2)}\n`);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 module.exports = {
   STALE_AFTER_MS,
+  CONFLICT_WINDOW_MS,
   MAX_RECENT_FILES,
   MESSAGE_MAX_CHARS,
   BRIEF_MAX_CHARS,
@@ -343,4 +441,6 @@ module.exports = {
   buildHandoffBrief,
   mergeSessionPatch,
   selectPrunable,
+  findConflicts,
+  recordDisplayName,
 };

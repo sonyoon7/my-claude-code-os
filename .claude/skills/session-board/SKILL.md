@@ -1,6 +1,6 @@
 ---
 name: session-board
-description: SessionStart·Stop·SessionEnd 훅이 .claude/sessions/<session_id>.json 에 세션마다 남긴 기록을 모아, 지금 이 저장소에서 동시에 살아있는 세션이 각각 무엇을 하고 있는지와 직전에 끝난 세션이 어디까지 하다 멈췄는지를 한 화면으로 보여준다. ATDD 파이프라인 밖의 세션 인계·협업 계층에 속하며, 세션이 열릴 때 SessionStart 훅이 자동 주입하는 짧은 인계 브리핑의 전체 버전이다. 사용자가 "세션 보드 보여줘", "지금 세션 몇 개 켜져 있어", "아까 세션 어디까지 했지", "다른 세션 뭐 하고 있어", "session board"라고 요청할 때 사용한다. 집계는 .claude/lib/session-board.js 의 buildBoard 함수에 위임하고, 실시간 생존 상태는 ListAgents 도구로 나란히 확인해 보드와 대조한다. 다른 세션에 메시지를 보내지 않고(session-relay의 몫), 세션 파일을 만들거나 고치지 않는다 — 기록은 오직 훅만 담당한다.
+description: SessionStart·Stop·SessionEnd 훅이 .claude/sessions/<session_id>.json 에 세션마다 남긴 기록을 모아, 지금 이 저장소에서 동시에 살아있는 세션이 각각 무엇을 하고 있는지와 직전에 끝난 세션이 어디까지 하다 멈췄는지를 한 화면으로 보여준다. ATDD 파이프라인 밖의 세션 인계·협업 계층에 속하며, 세션이 열릴 때 SessionStart 훅이 자동 주입하는 짧은 인계 브리핑의 전체 버전이다. 사용자가 "세션 보드 보여줘", "지금 세션 몇 개 켜져 있어", "아까 세션 어디까지 했지", "다른 세션 뭐 하고 있어", "session board"라고 요청할 때 사용한다. 집계는 .claude/lib/session-board.js 의 buildBoard 함수에 위임하고, 실시간 생존 상태는 ListAgents 도구로 나란히 확인해 보드와 대조한다. 다른 세션에 메시지를 보내지 않고(session-relay의 몫), 세션 파일을 만들거나 고치지 않는다 — 기록은 오직 훅만 담당하며, ListAgents로 알아낸 자기 표시 이름 한 필드만 좁은 예외로 기록한다.
 ---
 
 # 세션 보드 (session-board)
@@ -37,6 +37,13 @@ description: SessionStart·Stop·SessionEnd 훅이 .claude/sessions/<session_id>
    - 로직을 마크다운이 아니라 코드로 둔 이유: **마크다운 지시문은 자동 테스트가 불가능하기 때문이다**(`skill-stat`·`context-map`과 동일). `.claude/tests/session-board.test.js`가 AC-1~14를 검증한다.
 
 3. **`ListAgents` 호출** — 지금 실제로 살아있는 세션과 그 표시 이름을 받아온다.
+   - 출력 첫 줄에 **이 세션 자신의 이름**이 나온다. 아직 보드에 기록돼 있지 않다면 한 번만 기록해 둔다:
+     ```
+     node -e "const b=require('./.claude/lib/session-board.js');console.log(b.recordDisplayName({projectDir:process.cwd(),sessionId:'<내 세션 id>',displayName:'<ListAgents가 알려준 내 이름>'}))"
+     ```
+   - **이 한 필드가 스킬이 세션 파일에 쓰는 유일한 예외다.** 훅은 도구를 호출할 수 없어 `ListAgents`를 볼 수 없고, 자기 이름을 아는 주체는 세션 자신뿐이기 때문이다. 다른 필드는 절대 건드리지 않는다.
+   - 기록해 두면 다른 세션이 이쪽을 짧은 id가 아니라 **이름으로** 부를 수 있게 된다.
+
 4. **두 결과를 나란히 표로 렌더링**
    - 살아있는 세션(`live`): 짧은 id, 표시 이름(있으면), 마지막 활동(`heartbeatAgo`), 턴 수, `lastMessage`, `topFiles`.
    - **같은 파일이 두 세션의 `topFiles`에 겹쳐 나오면 반드시 강조한다** — 이게 이 보드의 실질적 쓸모다.
@@ -53,7 +60,7 @@ description: SessionStart·Stop·SessionEnd 훅이 .claude/sessions/<session_id>
 ## 참고
 
 - **`lastMessage`는 대화의 일부(마지막 응답 240자)를 로컬 파일에 남긴다.** 그래서 `.claude/sessions/`는 `.gitignore` 대상이다. 사용자가 이 필드의 존재를 처음 알게 될 때 이 점을 함께 알린다 — 숨기지 않는 것이 이 저장소의 습관이다.
-- 이 보드는 훅이 쓰고 스킬이 읽는다. 이 스킬이 세션 파일을 고치는 일은 없다.
+- 이 보드는 훅이 쓰고 스킬이 읽는다. 유일한 예외가 위 3번의 `displayName` 한 필드이고, 그 예외를 둔 이유도 3번에 적어 뒀다.
 - 다른 세션에게 **실제로 말을 거는 것**은 `session-relay`의 몫이다. 이 스킬은 "누구에게 말을 걸어야 하는지"까지만 알려준다.
 - 스킬 호출 **횟수**는 `skill-stat`, 테스트 실패 **이력**은 `failure-ledger`, 컨텍스트 **로드량**은 `context-map`이 각각 담당한다.
 - 이 계층은 **04단계에서 승인된 인수기준을 저장하지 않는다.** `lastMessage`로 "어디까지 했나"의 서술적 힌트는 남지만, 승인된 AC를 구조화해 보관하는 문제(OS.md §7)는 여전히 열려 있다.
