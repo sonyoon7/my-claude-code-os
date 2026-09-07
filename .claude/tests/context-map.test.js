@@ -14,6 +14,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 
 const {
+  listMcpServers,
   parseImportLines,
   countSize,
   resolveImportTree,
@@ -200,5 +201,113 @@ test("AC-B5: 08 개요 다이어그램의 수치가 실측과 일치한다", () 
     stale.map(([label, actual]) => `${label}: 실측 ${withComma(actual)}자가 다이어그램에 없습니다`),
     [],
     "08-context-overview.mmd 의 수치가 낡았습니다. .mmd 를 고치고 docs/diagrams/README.md 의 명령으로 .svg 를 다시 생성하세요"
+  );
+});
+
+// ------------------------------------------------------------------
+// MCP 서버 집계 (2026-09-07 추가)
+//
+// 배경: docs/context-budget.md 는 "세션 시작 시 무조건 나가는 비용"을 잰다고 선언하는데
+// MCP를 한 글자도 세지 않고 있었다. 가장 큰 항목이 계기판에 안 잡히던 사각지대다.
+// 다만 크기는 디스크에서 알 수 없으므로(서버에 붙어 tools/list를 해야 안다)
+// **개수와 목록만** 세고 alwaysLoaded 합계에는 섞지 않는다.
+// ------------------------------------------------------------------
+
+/** 경로→내용 맵으로 가짜 파일시스템을 만든다. 실제 디스크를 건드리지 않기 위해서다. */
+function fakeFs(files) {
+  return {
+    existsSync: (p) => Object.prototype.hasOwnProperty.call(files, p),
+    readFileSync: (p) => {
+      if (!Object.prototype.hasOwnProperty.call(files, p)) throw new Error(`ENOENT: ${p}`);
+      return files[p];
+    },
+  };
+}
+
+test("AC-M1: .mcp.json(프로젝트 스코프)의 서버를 이름·전송방식과 함께 낸다", () => {
+  const overrides = fakeFs({
+    "/proj/.mcp.json": JSON.stringify({
+      mcpServers: { "notion-min": { type: "stdio", command: "node", args: ["s.js"] } },
+    }),
+  });
+  const servers = listMcpServers([{ path: "/proj/.mcp.json", scope: "project" }], overrides);
+  assert.equal(servers.length, 1);
+  assert.equal(servers[0].name, "notion-min");
+  assert.equal(servers[0].transport, "stdio");
+  assert.equal(servers[0].scope, "project");
+});
+
+test("AC-M2: ~/.claude.json의 projects[프로젝트경로] 아래 local 스코프 서버도 찾는다", () => {
+  // 이 저장소의 notion MCP가 실제로 여기 있다. projectKey 없이 최상위만 보면 못 찾는다.
+  const overrides = fakeFs({
+    "/home/.claude.json": JSON.stringify({
+      mcpServers: {},
+      projects: { "/proj": { mcpServers: { notion: { type: "http", url: "https://x" } } } },
+    }),
+  });
+  const servers = listMcpServers(
+    [{ path: "/home/.claude.json", scope: "local", projectKey: "/proj" }],
+    overrides
+  );
+  assert.equal(servers.length, 1);
+  assert.equal(servers[0].name, "notion");
+  assert.equal(servers[0].transport, "http");
+  assert.equal(servers[0].scope, "local");
+});
+
+test("AC-M3: type이 없어도 command가 있으면 stdio로 판정한다", () => {
+  const overrides = fakeFs({ "/proj/.mcp.json": JSON.stringify({ mcpServers: { a: { command: "node" } } }) });
+  assert.equal(listMcpServers([{ path: "/proj/.mcp.json" }], overrides)[0].transport, "stdio");
+});
+
+test("AC-M4: 설정 파일이 없거나 JSON이 깨져도 던지지 않고 빈 배열을 낸다", () => {
+  // 지도 전체가 설정 파일 하나 때문에 죽으면 안 된다 (listRegisteredHooks와 같은 방침).
+  assert.deepEqual(listMcpServers([{ path: "/없음.json" }], fakeFs({})), []);
+  assert.deepEqual(listMcpServers([{ path: "/깨짐.json" }], fakeFs({ "/깨짐.json": "{ not json" })), []);
+  assert.deepEqual(listMcpServers([{ path: "/빈.json" }], fakeFs({ "/빈.json": "{}" })), []);
+  assert.deepEqual(listMcpServers([], fakeFs({})), []);
+});
+
+test("AC-M5: 여러 설정 파일의 서버를 모두 합친다", () => {
+  const overrides = fakeFs({
+    "/proj/.mcp.json": JSON.stringify({ mcpServers: { mine: { type: "stdio" } } }),
+    "/home/.claude.json": JSON.stringify({ projects: { "/proj": { mcpServers: { theirs: { type: "http" } } } } }),
+  });
+  const servers = listMcpServers(
+    [
+      { path: "/proj/.mcp.json", scope: "project" },
+      { path: "/home/.claude.json", scope: "local", projectKey: "/proj" },
+    ],
+    overrides
+  );
+  assert.deepEqual(servers.map((s) => s.name).sort(), ["mine", "theirs"]);
+});
+
+test("AC-M6: MCP는 unmeasured 칸에 들어가고 alwaysLoaded.total을 바꾸지 않는다", () => {
+  // 이 저장소에서 가장 중요한 회귀 방지선이다.
+  // 추정치를 합계에 섞는 순간 docs/context-budget.md 에 쌓인 이력과 비교가 깨진다.
+  const withMcp = summarizeBudget({ ...FAKE_MAP, mcpServers: [{ name: "a", transport: "stdio", scope: "project" }] });
+  const withoutMcp = summarizeBudget({ ...FAKE_MAP, mcpServers: [] });
+
+  assert.deepStrictEqual(withMcp.alwaysLoaded, withoutMcp.alwaysLoaded);
+  assert.equal(withMcp.unmeasured.mcpServerCount, 1);
+  assert.equal(withoutMcp.unmeasured.mcpServerCount, 0);
+  assert.match(withMcp.unmeasured.note, /tools\/list/);
+});
+
+test("AC-M7: mcpServers 키가 아예 없는 옛 map에도 summarizeBudget이 던지지 않는다", () => {
+  // FAKE_MAP은 MCP 추가 이전에 쓰인 모양이다. 옛 호출부가 깨지면 안 된다.
+  const budget = summarizeBudget(FAKE_MAP);
+  assert.equal(budget.unmeasured.mcpServerCount, 0);
+  assert.deepEqual(budget.unmeasured.mcpServers, []);
+});
+
+test("AC-M8: 실제 저장소에서 buildContextMap이 mcpServers를 낸다", () => {
+  const map = buildContextMap({ projectDir: path.join(__dirname, "..", "..") });
+  assert.ok(Array.isArray(map.mcpServers), "mcpServers가 배열이 아니다");
+  // 이 저장소에는 .mcp.json 의 notion-min 이 있다. 없으면 등록이 풀린 것이다.
+  assert.ok(
+    map.mcpServers.some((s) => s.name === "notion-min"),
+    `notion-min을 못 찾았다: ${JSON.stringify(map.mcpServers)}`
   );
 });

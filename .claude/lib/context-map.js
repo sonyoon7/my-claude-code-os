@@ -224,6 +224,64 @@ function listRegisteredHooks(settingsPaths, options = {}) {
 }
 
 /**
+ * 설정 파일들에서 등록된 MCP 서버를 목록화한다.
+ *
+ * ## 왜 크기를 세지 않고 개수만 세는가 (이 함수 설계의 전부다)
+ *
+ * MCP 서버는 세션마다 **툴 이름 목록과 server instructions**를 컨텍스트에 싣는다.
+ * 그런데 그 크기는 **디스크에서 알 수 없다** — 서버에 실제로 붙어 `tools/list`를 해야
+ * 알 수 있고, HTTP 서버는 OAuth까지 필요하다.
+ *
+ * 그래서 추정치를 만들어 `alwaysLoaded` 합계에 섞지 않는다. 섞으면
+ * `docs/context-budget.md`에 쌓인 기존 수치와 비교가 깨지고, 무엇보다
+ * 잰 값과 어림잡은 값이 한 숫자에 뭉개진다.
+ * `.claude/context/explanation-style.md`("확인하지 못했으면 확인하지 못했다고 적는다").
+ *
+ * 참고로 2026-09-07 이 저장소에서 잰 값: notion MCP는 툴 42개, 이름만 1,521자.
+ * 스키마 2개 표본이 약 13,000자였으므로 전부 실렸다면 약 27만 자였을 것으로 **추정**된다
+ * (상시 로드 총량 13,940자의 약 20배). Claude Code 2.1.263은 이름만 싣고
+ * 스키마는 지연 로딩해 이 비용의 대부분을 이미 막고 있다.
+ *
+ * @returns {{name: string, transport: string, source: string, scope: string}[]}
+ */
+function listMcpServers(configPaths, options = {}) {
+  const { readFileSync = fs.readFileSync, existsSync = fs.existsSync } = options;
+  const entries = Array.isArray(configPaths) ? configPaths : [configPaths];
+  const servers = [];
+
+  for (const entry of entries) {
+    const filePath = typeof entry === "string" ? entry : entry?.path;
+    const scope = (typeof entry === "object" && entry?.scope) || "project";
+    // `~/.claude.json`은 서버 목록이 projects[<프로젝트 경로>].mcpServers 아래에 있다.
+    const projectKey = typeof entry === "object" ? entry?.projectKey : null;
+
+    if (!filePath || !existsSync(filePath)) continue;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+    } catch (_) {
+      continue; // 깨진 JSON 때문에 지도 전체가 죽지 않는다
+    }
+
+    const container = projectKey ? parsed?.projects?.[projectKey] : parsed;
+    const tree = container && typeof container.mcpServers === "object" ? container.mcpServers : null;
+    if (!tree) continue;
+
+    for (const [name, config] of Object.entries(tree)) {
+      servers.push({
+        name,
+        transport: config?.type || (config?.command ? "stdio" : "unknown"),
+        source: filePath,
+        scope,
+      });
+    }
+  }
+
+  return servers;
+}
+
+/**
  * 위 함수들을 묶어 `context-map` 스킬이 그대로 보고할 수 있는 형태로 반환한다.
  * `.claude/context/`에 아직 실제 지침 파일이 없을 때는(오늘 시점 정상 상태) 에러 대신
  * `note`에 빈 상태를 명시한다 — stats.js의 `isEmpty` 처리와 같은 정직함이다.
@@ -233,6 +291,7 @@ function listRegisteredHooks(settingsPaths, options = {}) {
  *   skills: object[],
  *   agents: object[],
  *   hooks: object[],
+ *   mcpServers: object[],
  *   onDemandTotals: {skillsFullChars: number, agentsFullChars: number},
  *   note: string|null,
  * }}
@@ -243,11 +302,21 @@ function buildContextMap({ projectDir, fsOverrides = {} }) {
   const agentsDir = path.join(projectDir, ".claude", "agents");
   const settingsPath = path.join(projectDir, ".claude", "settings.json");
   const settingsLocalPath = path.join(projectDir, ".claude", "settings.local.json");
+  // MCP 서버는 세 군데에 흩어져 있다: 프로젝트 `.mcp.json`(커밋됨),
+  // `~/.claude.json`의 projects[프로젝트경로](local 스코프), 같은 파일의 최상위(user 스코프).
+  const homeDir = fsOverrides.homeDir || os.homedir();
+  const userConfigPath = path.join(homeDir, ".claude.json");
+  const mcpConfigPaths = [
+    { path: path.join(projectDir, ".mcp.json"), scope: "project" },
+    { path: userConfigPath, scope: "local", projectKey: projectDir },
+    { path: userConfigPath, scope: "user" },
+  ];
 
   const importTree = resolveImportTree(claudeMdPath, fsOverrides);
   const skills = listSkillManifests(skillsDir, fsOverrides);
   const agents = listAgentManifests(agentsDir, fsOverrides);
   const hooks = listRegisteredHooks([settingsPath, settingsLocalPath], fsOverrides);
+  const mcpServers = listMcpServers(mcpConfigPaths, fsOverrides);
 
   // depth 1은 CLAUDE.md, depth 2는 .claude/context/index.md(레지스트리) 자신이다.
   // 실제 개인 지침 파일은 index.md가 가리키는 depth 3부터다.
@@ -260,6 +329,7 @@ function buildContextMap({ projectDir, fsOverrides = {} }) {
     skills,
     agents,
     hooks,
+    mcpServers,
     onDemandTotals: {
       skillsFullChars: skills.reduce((sum, s) => sum + s.fullChars, 0),
       agentsFullChars: agents.reduce((sum, a) => sum + a.fullChars, 0),
@@ -296,6 +366,16 @@ function summarizeBudget(map) {
       total: onDemandTotal,
     },
     zeroCost: { hooks: map.hooks.length },
+    // 세션마다 로드되지만 **디스크에서는 크기를 알 수 없는** 항목.
+    // 일부러 alwaysLoaded.total 에 섞지 않는다 — 잰 값과 어림값을 한 숫자로 뭉개면
+    // docs/context-budget.md 에 쌓인 이력과 비교가 깨진다. listMcpServers 주석 참고.
+    unmeasured: {
+      mcpServers: (map.mcpServers || []).map((s) => ({ name: s.name, transport: s.transport, scope: s.scope })),
+      mcpServerCount: (map.mcpServers || []).length,
+      note:
+        "MCP 서버의 툴 이름 목록과 server instructions는 세션마다 로드되지만 " +
+        "크기를 알려면 서버에 붙어 tools/list를 해야 한다. `claude mcp list`·`/mcp`로 확인한다.",
+    },
   };
 }
 
@@ -308,6 +388,7 @@ module.exports = {
   listSkillManifests,
   listAgentManifests,
   listRegisteredHooks,
+  listMcpServers,
   buildContextMap,
   summarizeBudget,
 };
