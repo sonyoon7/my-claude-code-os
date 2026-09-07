@@ -14,7 +14,7 @@ Claude Code는 세션을 열 때 루트 `CLAUDE.md`를 항상 읽는다. `CLAUDE
 ## 새 지침 파일 추가 방법
 
 1. `.claude/context/`에 새 `.md` 파일을 만든다 (예: `communication-style.md`).
-2. `.claude/context/index.md`에 `@.claude/context/communication-style.md` 한 줄을 추가한다.
+2. `.claude/context/index.md`에 `@communication-style.md` 한 줄을 추가한다. **경로는 `index.md` 기준 상대 경로**이므로 같은 디렉터리에 있는 파일은 이름만 적는다 — 루트 기준으로 `@.claude/context/…`라고 쓰면 이중 중첩돼 경고 없이 조용히 로드되지 않는다.
 3. **새 세션을 열어야 반영이 확인된다** — `@import`는 세션 시작 시에만 해석되므로, 진행 중인 세션에서는 새 파일이 로드되지 않는다.
 4. 실제로 로드됐는지는 `.claude/skills/context-map` 스킬로 확인할 수 있다.
 
