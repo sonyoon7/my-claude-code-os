@@ -18,3 +18,10 @@ Claude Code의 `@import`는 세션 시작 시 재귀적으로(최대 5단계) �
 <!-- 아래에 실제 지침 파일이 생기면 위 형식대로 @ 줄을 추가한다. -->
 
 @requirement-gate.md
+@code-vs-instruction.md
+@hook-discipline.md
+@commit-habits.md
+@docs-diagrams.md
+@explanation-style.md
+@sensitive-info.md
+@response-brevity.md
