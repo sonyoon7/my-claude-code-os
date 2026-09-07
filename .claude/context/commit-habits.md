@@ -1,9 +1,10 @@
 # 커밋·변경 관습
 
-- **Conventional Commits + 한국어 본문.** 제목은 `feat:`/`fix:`/`docs:`/`refactor:`/`test:`/`chore:` 로 시작하고, 대상을 괄호로 덧붙인다 — 예: `feat: 세션 인계 계층 추가 (session-board, Layer 1)`.
+승인 게이트는 `big-change-commit-check.js` 훅이 맡는다. 여기에는 **훅이 판단할 수 없는 것**만 적는다.
+
+- **Conventional Commits + 한국어 본문.** 제목은 `feat:`/`fix:`/`docs:`/`refactor:`/`test:`/`chore:` 로 시작하고 대상을 괄호로 덧붙인다 — 예: `feat: 세션 인계 계층 추가 (session-board, Layer 1)`.
 - **성격이 다른 변경은 나눈다.** 되돌리기 단위가 커밋 단위다. "메커니즘"과 "그 메커니즘의 첫 실행 기록"은 다른 커밋이다.
-- **먼저 커밋하지 않는다.** 커밋·푸시는 사람이 승인한 뒤에만 한다. 변경이 5파일·150줄을 넘으면 중간 커밋 여부를 먼저 묻는다.
 - 본문에는 **무엇을 바꿨는가보다 왜 그렇게 정했는가**를 적는다. 무엇은 diff가 이미 말한다.
 - 개인 지침·설계 이력도 저장소의 다른 모든 것과 동일하게 커밋한다. 민감한 내용은 애초에 적지 않는 방식으로 관리한다.
 
-근거: `git log`의 실제 패턴, `.claude/hooks/big-change-commit-check.js`의 임계값, `.claude/context/README.md` "커밋 여부".
+근거: `git log`의 실제 패턴, `.claude/context/README.md` "커밋 여부".
