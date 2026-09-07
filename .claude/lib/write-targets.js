@@ -65,10 +65,15 @@ function splitSegments(command) {
     .filter((part) => part !== "");
 }
 
-/** 리다이렉션(`>`, `>>`) 대상만 뽑는다. `2>&1`·`>&2`는 파일이 아니므로 제외한다. */
+/**
+ * 리다이렉션(`>`, `>>`) 대상만 뽑는다. `2>&1`·`>&2`는 파일이 아니므로 제외한다.
+ * `=>`(화살표 함수)도 제외한다 — 2026-09-07에 세션 보드의 recentFiles에 `f.path` 같은
+ * 쓰레기가 쌓인 것을 보고 발견했다. `node -e "...map(f=>f.path)"` 같은 명령에서 나온다.
+ * 테스트가 아니라 **실제로 쌓인 데이터를 눈으로 보고** 잡은 결함이라 AC-18로 못박는다.
+ */
 function redirectTargets(segment) {
   const targets = [];
-  const pattern = /(?<![0-9&>])>{1,2}(?!&)\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g;
+  const pattern = /(?<![0-9&>=])>{1,2}(?!&)\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g;
   let match;
   while ((match = pattern.exec(segment)) !== null) {
     targets.push(match[1].replace(/^["']|["']$/g, ""));

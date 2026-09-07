@@ -84,3 +84,9 @@ test("AC-17: stripHeredocs는 종료 구분자와 본문을 모두 제거한다"
   const command = ["cat > f <<'EOF'", "본문", "EOF", "echo done"].join("\n");
   assert.strictEqual(stripHeredocs(command), ["cat > f <<'EOF'", "echo done"].join("\n"));
 });
+
+test("AC-18: 화살표 함수 `=>`를 리다이렉션으로 오인하지 않는다", () => {
+  // 실제로 세션 보드에 `f.path`가 쌓여서 발견한 결함(2026-09-07).
+  assert.deepStrictEqual(extractWriteTargets('node -e "a.map(f=>f.path)"'), []);
+  assert.deepStrictEqual(extractWriteTargets('node -e "x.filter(t=>t.ok)" > out.json'), ["out.json"]);
+});
