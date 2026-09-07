@@ -168,3 +168,37 @@ test("AC-B4: 실제 저장소에서도 상시 로드가 온디맨드보다 작�
     `상시 ${budget.alwaysLoaded.total}자가 온디맨드 ${budget.onDemand.total}자보다 커졌습니다 — 요약만 있어야 할 곳에 본문이 들어갔는지 확인하세요`
   );
 });
+
+// --- 08 개요 다이어그램의 수치가 낡았는지 감시 (2026-09-07 추가) ---
+// `docs-diagrams.md`는 "문서에 지금 이 순간의 수치를 박지 않는다"를 규칙으로 두고,
+// 08 개요 다이어그램만 예외로 뒀다. 예외의 조건은 "낡으면 드러난다"였는데, 그 드러남을
+// 사람의 주의력에 맡기면 반드시 놓친다 — 실제로 예외를 만든 지 20분 만에 246자가 어긋났다.
+// 그래서 드러나는 경로 자체를 테스트로 만든다. 지침을 고치면 이 테스트가 빨간불이 되고,
+// `docs/diagrams/README.md`의 재생성 명령 한 줄로 고친다.
+
+test("AC-B5: 08 개요 다이어그램의 수치가 실측과 일치한다", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const projectDir = path.resolve(__dirname, "..", "..");
+  const mmdPath = path.join(projectDir, "docs", "diagrams", "08-context-overview.mmd");
+  if (!fs.existsSync(mmdPath)) return; // 다이어그램이 없으면 검사할 것도 없다
+
+  const mmd = fs.readFileSync(mmdPath, "utf-8");
+  const budget = summarizeBudget(buildContextMap({ projectDir }));
+  const withComma = (n) => n.toLocaleString("en-US");
+
+  const claims = [
+    ["항상 로드 합계", budget.alwaysLoaded.total],
+    ["@import 체인", budget.alwaysLoaded.importChars],
+    ["스킬 description", budget.alwaysLoaded.skillDescChars],
+    ["에이전트 description", budget.alwaysLoaded.agentDescChars],
+    ["온디맨드 합계", budget.onDemand.total],
+  ];
+
+  const stale = claims.filter(([, actual]) => !mmd.includes(withComma(actual)));
+  assert.deepStrictEqual(
+    stale.map(([label, actual]) => `${label}: 실측 ${withComma(actual)}자가 다이어그램에 없습니다`),
+    [],
+    "08-context-overview.mmd 의 수치가 낡았습니다. .mmd 를 고치고 docs/diagrams/README.md 의 명령으로 .svg 를 다시 생성하세요"
+  );
+});

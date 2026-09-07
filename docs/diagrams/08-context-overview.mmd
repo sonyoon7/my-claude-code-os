@@ -1,9 +1,9 @@
 flowchart LR
     Human(["사람이 정하는 것<br/>지침 추가·수정<br/>무엇을 반영할지"]):::human
 
-    subgraph Always["■ 항상 로드 · 13,942자 — 세션마다 무조건 낸다"]
-        Chain["@import 체인 · 7,341자<br/>CLAUDE.md → index.md<br/>→ 지침 8개"]:::data
-        Guides["지침 8개 · 자수 = 상시 비용<br/> <br/>requirement-gate 1,821<br/>바꾸기 전에 먼저 묻는다<br/>response-brevity 1,309<br/>결론 먼저 · 분량 상한<br/>docs-diagrams 715<br/>.mmd가 원본 · 옵션 3종<br/>explanation-style 670<br/>근거와 한계를 남긴다<br/>code-vs-instruction 634<br/>검증은 코드 · 표시는 지시문<br/>hook-discipline 612<br/>규율은 훅 · 결정은 사람<br/>commit-habits 493<br/>커밋 단위와 메시지<br/>sensitive-info 409<br/>공개 커밋 전제"]:::data
+    subgraph Always["■ 항상 로드 · 14,188자 — 세션마다 무조건 낸다"]
+        Chain["@import 체인 · 7,587자<br/>CLAUDE.md → index.md<br/>→ 지침 8개"]:::data
+        Guides["지침 8개 · 자수 = 상시 비용<br/> <br/>requirement-gate 1,821<br/>바꾸기 전에 먼저 묻는다<br/>response-brevity 1,309<br/>결론 먼저 · 분량 상한<br/>docs-diagrams 961<br/>.mmd가 원본 · 옵션 3종<br/>explanation-style 670<br/>근거와 한계를 남긴다<br/>code-vs-instruction 634<br/>검증은 코드 · 표시는 지시문<br/>hook-discipline 612<br/>규율은 훅 · 결정은 사람<br/>commit-habits 493<br/>커밋 단위와 메시지<br/>sensitive-info 409<br/>공개 커밋 전제"]:::data
         SkillD["스킬 description · 5,232자<br/>13개 · 스킬 선택의 유일한 근거<br/>가장 크지만 손대면 안 되는 항목"]:::skill
         AgentD["에이전트 description<br/>1,369자 · 4개"]:::agent
     end
@@ -15,7 +15,7 @@ flowchart LR
     end
 
     subgraph Rest["■ 나머지 비용"]
-        OnD["온디맨드 · 59,806자<br/>호출될 때만 · 상시의 4.3배<br/>스킬 본문 51,162 + 에이전트 8,644"]:::skill
+        OnD["온디맨드 · 59,806자<br/>호출될 때만 · 상시의 4.2배<br/>스킬 본문 51,162 + 에이전트 8,644"]:::skill
         Zero["훅 8개 · 컨텍스트 비용 0<br/>이벤트에 스크립트만 실행"]:::hook
     end
 
