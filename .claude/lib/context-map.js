@@ -268,6 +268,37 @@ function buildContextMap({ projectDir, fsOverrides = {} }) {
   };
 }
 
+/**
+ * `buildContextMap`의 결과를 "세션 시작 시 항상 내는 비용" 기준으로 요약한다.
+ *
+ * 왜 따로 두는가: 컨텍스트 예산을 이야기할 때마다 호출부가 같은 덧셈을 다시 하면
+ * 사람마다 다른 수치가 나온다. 무엇을 상시 비용으로 셀지(= import 체인 전문 +
+ * 스킬·에이전트의 description, 본문은 제외)를 여기 한 곳에 고정한다.
+ *
+ * 훅은 이벤트에 반응해 스크립트로 실행될 뿐 컨텍스트를 차지하지 않으므로 개수만 센다.
+ */
+function summarizeBudget(map) {
+  const importChars = map.importTree.totalChars;
+  const skillDescChars = map.skills.reduce((sum, s) => sum + s.descriptionChars, 0);
+  const agentDescChars = map.agents.reduce((sum, a) => sum + a.descriptionChars, 0);
+  const onDemandTotal = map.onDemandTotals.skillsFullChars + map.onDemandTotals.agentsFullChars;
+
+  return {
+    alwaysLoaded: {
+      importChars,
+      skillDescChars,
+      agentDescChars,
+      total: importChars + skillDescChars + agentDescChars,
+    },
+    onDemand: {
+      skillsFullChars: map.onDemandTotals.skillsFullChars,
+      agentsFullChars: map.onDemandTotals.agentsFullChars,
+      total: onDemandTotal,
+    },
+    zeroCost: { hooks: map.hooks.length },
+  };
+}
+
 module.exports = {
   parseImportLines,
   countSize,
@@ -278,4 +309,5 @@ module.exports = {
   listAgentManifests,
   listRegisteredHooks,
   buildContextMap,
+  summarizeBudget,
 };

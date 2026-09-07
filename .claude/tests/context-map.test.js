@@ -122,3 +122,49 @@ test("AC-10: buildContextMap은 실제 지침 파일이 있을 때만 note를 �
   assert.ok(typeof empty.note === "string" && empty.note.includes("아직"));
   assert.equal(empty.skills.length, 0, "스킬 디렉터리가 없으면 빈 배열이어야 한다(예외 아님)");
 });
+
+// --- 컨텍스트 예산 요약 (2026-09-07 추가) ---
+// 상시 비용을 무엇으로 셀지 한 곳에 고정하기 위한 함수. 호출부마다 덧셈을 다시 하면
+// 같은 저장소를 두고 사람마다 다른 수치를 말하게 된다.
+
+const { summarizeBudget } = require("../lib/context-map.js");
+
+const FAKE_MAP = {
+  importTree: { nodes: [], totalLines: 0, totalChars: 100 },
+  skills: [{ descriptionChars: 30 }, { descriptionChars: 20 }],
+  agents: [{ descriptionChars: 10 }],
+  hooks: [{}, {}, {}],
+  onDemandTotals: { skillsFullChars: 900, agentsFullChars: 400 },
+};
+
+test("AC-B1: 상시 로드는 import 전문 + 스킬·에이전트 description의 합이다", () => {
+  const budget = summarizeBudget(FAKE_MAP);
+  assert.deepStrictEqual(budget.alwaysLoaded, {
+    importChars: 100,
+    skillDescChars: 50,
+    agentDescChars: 10,
+    total: 160,
+  });
+});
+
+test("AC-B2: 스킬·에이전트 본문은 온디맨드로만 세고 상시 비용에 넣지 않는다", () => {
+  const budget = summarizeBudget(FAKE_MAP);
+  assert.strictEqual(budget.onDemand.total, 1300);
+  assert.ok(budget.alwaysLoaded.total < budget.onDemand.total);
+});
+
+test("AC-B3: 훅은 컨텍스트 비용이 0이므로 글자가 아니라 개수만 센다", () => {
+  const budget = summarizeBudget(FAKE_MAP);
+  assert.deepStrictEqual(budget.zeroCost, { hooks: 3 });
+});
+
+test("AC-B4: 실제 저장소에서도 상시 로드가 온디맨드보다 작다", () => {
+  const path = require("node:path");
+  const { buildContextMap } = require("../lib/context-map.js");
+  const budget = summarizeBudget(buildContextMap({ projectDir: path.resolve(__dirname, "..", "..") }));
+  assert.ok(budget.alwaysLoaded.total > 0);
+  assert.ok(
+    budget.alwaysLoaded.total < budget.onDemand.total,
+    `상시 ${budget.alwaysLoaded.total}자가 온디맨드 ${budget.onDemand.total}자보다 커졌습니다 — 요약만 있어야 할 곳에 본문이 들어갔는지 확인하세요`
+  );
+});

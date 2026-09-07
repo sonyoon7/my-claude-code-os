@@ -1,27 +1,14 @@
-# 개인 업무 가이드라인 인덱스
+# 개인 업무 지침 레지스트리
 
-이 파일은 지침 **내용**이 아니라 **레지스트리**다. 루트 `CLAUDE.md`가 이 파일 하나만 `@import`하고, 실제 지침 파일은 여기에 한 줄씩 등록한다 — 새 지침을 추가할 때 루트 `CLAUDE.md`를 다시 건드릴 필요가 없게 하기 위해서다.
+이 파일은 지침 **내용**이 아니라 **목록**이다. 세션 시작 시 `CLAUDE.md`가 이 파일 하나만 `@import`하고, 아래 등록된 지침이 함께 로드된다.
 
-Claude Code의 `@import`는 세션 시작 시 재귀적으로(최대 5단계) 해석된다. 여기서부터 세면: `CLAUDE.md`(1) → `index.md`(2) → 지침 파일(3) 이므로 아직 여유가 있다. 지침 파일이 또 다른 파일을 `@import`하는 중첩은 꼭 필요한 경우가 아니면 피한다 — 깊어질수록 추적하기 어려워진다.
-
-## 새 지침 파일을 추가하는 법
-
-1. `.claude/context/`에 새 `.md` 파일을 만든다. 파일명은 자유(주제를 드러내는 이름 권장), 순서는 의미 없다 — 등록 여부만 중요하다.
-2. 이 파일 맨 아래, 주석 다음 줄에 `@` 로 시작하는 줄을 한 줄 추가한다. **경로는 프로젝트 루트가 아니라 이 파일(`index.md`)이 있는 디렉터리 기준 상대 경로다.** 같은 `.claude/context/`에 둔 지침이라면 파일 이름만 적는다 — `@communication-style.md`. 루트 기준으로 `@.claude/context/communication-style.md`라고 적으면 `.claude/context/.claude/context/…`로 이중 중첩돼 **아무 경고 없이 조용히 로드되지 않는다.** (해석 규칙은 `.claude/lib/context-map.js`의 `resolveImportPath`가 그대로 구현하고 있다.)
-3. **없는 파일을 등록하지 않는다.** 존재하지 않는 경로를 `@import` 하면 세션 시작 시 로드 경고가 뜬다. 파일을 먼저 만들고 그다음에 등록한다.
-4. **새 세션을 열어야 반영된다.** `@import`는 세션 시작 시에만 해석되므로, 지금 세션에서는 방금 등록한 지침이 로드되지 않는다. 반영 여부는 `Skill(context-map)`으로 확인한다.
-
-## 커밋 여부
-
-이 저장소의 다른 모든 것과 동일하게 **커밋한다** (확정, 2026-09-02). 회사 내부 정보나 민감한 내용은 애초에 이 파일에 적지 않는 방식으로 관리한다 — 자세한 이유는 `.claude/context/README.md` 참고.
-
-<!-- 아래에 실제 지침 파일이 생기면 위 형식대로 @ 줄을 추가한다. -->
+추가 방법·경로 규칙·커밋 정책은 `.claude/context/README.md`에 있다(로드되지 않으므로 필요할 때만 읽는다). 등록 정합성은 `node --test .claude/tests/context-inject.test.js`가 지킨다.
 
 @requirement-gate.md
+@response-brevity.md
 @code-vs-instruction.md
 @hook-discipline.md
 @commit-habits.md
 @docs-diagrams.md
 @explanation-style.md
 @sensitive-info.md
-@response-brevity.md
