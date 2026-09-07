@@ -1,0 +1,49 @@
+flowchart TB
+    Human(["사람<br/>지침을 추가하거나 고친다"]):::human
+
+    subgraph Chain["① 주입 — CLAUDE.md의 @import 체인 (세션 시작 시 1회만 해석)"]
+        direction TB
+        CM["CLAUDE.md<br/>레지스트리 하나만 가리킨다"]:::data
+        IDX[".claude/context/index.md<br/>레지스트리 — 나열만 한다"]:::data
+        G["지침 8개<br/>requirement-gate · response-brevity<br/>code-vs-instruction · hook-discipline<br/>commit-habits · docs-diagrams<br/>explanation-style · sensitive-info"]:::data
+    end
+
+    subgraph Reach["② 도달 범위 — 여기까지는 자동"]
+        direction TB
+        Main["메인 대화 컨텍스트"]:::data
+        Skills["스킬 13개<br/>같은 대화에서 실행 → 그대로 상속"]:::skill
+    end
+
+    subgraph Isolated["③ 서브에이전트 — 격리 컨텍스트, 자동 상속 없음"]
+        direction TB
+        Builder["os-builder<br/>@import 줄 + 0단계 읽기 지시<br/>둘 다 있어야 주입 성립"]:::agent
+        Judges["policy-reviewer<br/>test-reviewer<br/>ui-visual-reviewer<br/>차단은 사고가 아니라 설계<br/>OS.md 2026-08-28"]:::agent
+    end
+
+    subgraph Guard["④ 감시 — 주입이 선언대로 유지되는가"]
+        direction TB
+        Tests[".claude/tests/<br/>context-inject.test.js<br/>AC-1~17"]:::data
+        Audit[".claude/lib/<br/>context-inject.js<br/>auditInjection()"]:::skill
+    end
+
+    Warn[".claude/hooks/<br/>session-conflict-warn.js<br/>컨텍스트 비용 0"]:::hook
+
+    Human --> IDX
+    CM -->|"@"| IDX
+    IDX -->|"@ 8줄"| G
+    G --> Main
+    Main --> Skills
+    Main -. "상속되지 않음" .-> Isolated
+    G ==>|"명시적 주입"| Builder
+    G -. "주입하지 않는다" .-> Judges
+    Tests -->|"빨간불로 잡는다"| Audit
+    Audit -. "고아 · 끊어진 등록 · 경로 오기" .-> Chain
+    Audit -. "주입 표식 · 차단 유지" .-> Isolated
+    Warn -. "다른 세션이 만진 파일이면 경고" .-> Chain
+
+    classDef human fill:#fde68a,stroke:#b45309,color:#111827;
+    classDef data fill:#e5e7eb,stroke:#4b5563,color:#111827;
+    classDef skill fill:#bbf7d0,stroke:#15803d,color:#111827;
+    classDef agent fill:#bfdbfe,stroke:#1d4ed8,color:#111827;
+    classDef hook fill:#fecaca,stroke:#b91c1c,color:#111827;
+    linkStyle 7 stroke:#b91c1c,stroke-width:2px;
