@@ -17,3 +17,11 @@
 # (mockup.*, ui-spec.md는 고정 fixture라 커밋 대상으로 남긴다)
 .claude/tests/fixtures/**/screenshot.*
 /.idea/
+
+# 세션 인계·협업 계층(session-board)이 세션마다 남기는 런타임 상태.
+# 훅(session-register/heartbeat/close/conflict-warn)이 매 턴 갱신하는 로컬 실행 데이터다.
+# 커밋 대상이 되면 big-change-commit-check.js의 git status 서명이 매 턴 달라져
+# 무한 재발동한다 — .commit-check-state.json과 정확히 같은 이유다.
+# (.claude/tests/fixtures/session-board/sessions/ 는 고정 픽스처라 커밋 대상이므로
+#  'sessions/' 가 아니라 정확한 경로로 적는다)
+.claude/sessions/
