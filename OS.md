@@ -130,11 +130,11 @@
 
 ## 9. 디벨롭에 필요한 기능 정리
 
-지금은 아무것도 없는 상태라, ATDD OS를 계속 키워나가려면 파이프라인 단계별로 어떤 기능이 필요한지 미리 정리해둔다. 상태는 매주 갱신한다.
+ATDD OS를 계속 키워나가려면 파이프라인 단계별로 어떤 기능이 필요한지 정리해둔다. 이 표는 **무엇이 필요한가**를 담고, 지금 실제로 무엇이 있고 초록불인지는 `atdd-status` 스킬이 실행 시점에 답한다.
 
 | 단계 | 상태 | 필요한 기능 |
 |---|---|---|
-| 01.5 요구사항 인터뷰 | ✅ 동작 (2026-09-02 추가, 실제 dry-run은 미실시) | `requirement-interview` 스킬 — 슬롯 6개 중 3개 이상 결손일 때만 진입, 분류별 질문 예산(spike 1~2 / bounded 3~5 / architectural 최대 8), 산출물은 동결되는 인터뷰 브리프. 형식·완결성은 `.claude/lib/interview-brief.js` + AC-1~11로 검증하되 **인터뷰 품질은 검증하지 않는다** |
+| 01.5 요구사항 인터뷰 | ✅ 동작 (2026-09-02 추가, 2026-09-07 첫 실주행) | `requirement-interview` 스킬 — 슬롯 6개 중 3개 이상 결손일 때만 진입, 분류별 질문 예산(spike 1~2 / bounded 3~5 / architectural 최대 8), 산출물은 동결되는 인터뷰 브리프. 형식·완결성은 `.claude/lib/interview-brief.js` + AC-1~11로 검증하되 **인터뷰 품질은 검증하지 않는다** |
 | 02 정책 분해 | ✅ 동작 | `spec-decompose` 스킬 — 요구사항(또는 인터뷰 브리프)을 인수기준 목록으로 분해. 스스로 가정을 만들지 않고 브리프의 `미해결 가정`만 인용한다 |
 | 03 독립 리뷰 | ✅ 동작 | `policy-reviewer` 서브에이전트 — 분해 과정과 컨텍스트를 공유하지 않고 PASS/FAIL 판정 |
 | 04 승인 게이트 | ✅ 동작 | AskUserQuestion 기반 사람 승인 확인 (7장 열린 질문에서 확정) |
@@ -146,18 +146,20 @@
 | — (조건부) UI 스펙 추출 | ✅ 동작 (2026-08-28 첫 dry-run 완료, 사람 오버라이드 2회 포함) | `ui-spec-from-image` 스킬 — 이미지가 첨부된 경우 02단계 전에 위임되어 레이아웃/컴포넌트/텍스트/색상을 `ui-spec.md`로 정리 |
 | — (조건부) UI 구조·시각 검증 | ✅ 동작 (2026-08-28 첫 dry-run 완료, 사람 오버라이드 2회 포함) | `dom-lite.js`(경량 HTML/CSS 파서, jsdom 미도입, 12개 AC로 자체 검증 완료)로 05단계 구조 테스트, `ui-visual-reviewer` 서브에이전트로 06단계 스크린샷 vs 원본 목업 시각 비교. 3회 재시도 상한은 구조 테스트와 공유 |
 | 상태 관리 | 🔧 뼈대만 (2026-09-07) | 세션 인계 계층으로 **"직전 세션이 어디까지 했나"의 서술적 인계는 동작**한다. 그러나 지금 파이프라인이 몇 단계에 있는지, 04단계에서 승인된 AC가 무엇인지를 **구조화해 저장하는 일은 여전히 미정** — 7장 열린 질문으로 남아 있다 |
-| 세션 인계·협업 계층 | ✅ 동작 (2026-09-07 추가) | `.claude/sessions/<session_id>.json`(세션당 파일 1개, gitignore)에 훅 4개가 기록 — `session-register`(SessionStart, 인계 브리핑 자동 주입 + 정리), `session-heartbeat`(Stop, `last_assistant_message`로 "뭘 하다 멈췄나" 기록), `session-close`(SessionEnd), `session-conflict-warn`(PreToolUse Edit\|Write, 살아있는 다른 세션과 같은 파일이면 경고만). 조회는 `session-board` 스킬, 발신은 `session-relay` 스킬(`ListAgents`+`SendMessage`에 위임, 사람 승인 필수). 집계 로직은 `.claude/lib/session-board.js` + AC-1~14. ATDD 파이프라인 밖 |
+| 세션 인계·협업 계층 | ✅ 동작 (2026-09-07 추가) | `.claude/sessions/<session_id>.json`(세션당 파일 1개, gitignore)에 훅 4개가 기록 — `session-register`(SessionStart, 인계 브리핑 자동 주입 + 정리), `session-heartbeat`(Stop, `last_assistant_message`로 "뭘 하다 멈췄나" 기록), `session-close`(SessionEnd), `session-conflict-warn`(PreToolUse Edit\|Write\|Bash, 살아있는 다른 세션과 같은 파일이면 경고만). 조회는 `session-board` 스킬, 발신은 `session-relay` 스킬(`ListAgents`+`SendMessage`에 위임, 사람 승인 필수). 집계 로직은 `.claude/lib/session-board.js` + AC-1~14. ATDD 파이프라인 밖 |
 | 결과 가시화 | ✅ 동작 | `atdd-status` 스킬 — 구성요소·단계별 동작 여부·현재 초록불/빨간불을 한 화면으로. 호출 횟수는 `skill-stat`, 실패 이력은 `failure-ledger`가 분담 |
-| 개인 가이드라인 계층 | ✅ 동작 (2026-09-07) | `.claude/context/` — 지침 8개를 `index.md` 레지스트리로 등록. 등록 정합성은 `.claude/lib/context-inject.js` + AC-1~17이 지킨다. **서브에이전트별 선별 주입은 불가능하다** — `CLAUDE.md` 체인이 전원에게 상속된다(2026-09-07 실측, `docs/context-ab-test.md`) |
+| 개인 가이드라인 계층 | ✅ 동작 (2026-09-07) | `.claude/context/` — 개인 지침을 `index.md` 레지스트리 한 곳에 등록한다(개수는 `context-map`이 실행 시점에 집계). 등록 정합성은 `.claude/lib/context-inject.js` + AC-1~17이 지킨다. **서브에이전트별 선별 주입은 불가능하다** — `CLAUDE.md` 체인이 전원에게 상속된다(2026-09-07 실측, `docs/context-ab-test.md`) |
 | 컨텍스트 지도 | ✅ 동작 | `context-map` 스킬 — 세션 시작 시 항상 로드되는 것(CLAUDE.md 계열, 스킬/에이전트 요약)과 온디맨드로만 로드되는 것(스킬·에이전트 본문), 컨텍스트 비용이 0인 훅을 계층별로 보여줌. ATDD 파이프라인 밖 |
 
 > **설계 노트**: "적용 대상"을 이 저장소 자체로 정하면, 뼈대의 첫 dry-run 요구사항도 자연스럽게 "이 저장소의 다음 기능"으로 정해진다 — 예) *"skill-stat 스킬에 '가장 최근 사용한 스킬' 항목도 보여주는 기능 추가"*. 이렇게 하면 05~07단계(실패 테스트 → TDD 구현)로 이어갈 실질적인 대상도 자연히 생긴다.
 
-## 10. OS 구조와 오케스트레이션 (2026-08-27 기준)
+## 10. OS 구조와 오케스트레이션
 
 ### 10.1 요약
 
-**구성(2026-09-02 기준 재집계, `context-map` 스킬로 확인)**: 스킬 11개 + 서브에이전트 3개 + 훅 4개. 이 중 ATDD 파이프라인에 직접 참여하는 것은 스킬 8개(`ui-spec-from-image`·`requirement-interview` 포함)·서브에이전트 3개(`ui-visual-reviewer` 포함)·훅 1개이고, 나머지(`skill-stat`, `git-commit-message`, `context-map`, `log-skill-usage.js`, `os-retro-check.js`, `big-change-commit-check.js`)는 파이프라인 밖의 보조 도구다. (이전 판(2026-08-27) 기록에 남아 있던 "스킬 8개+서브에이전트 2개"는 이후 `ui-spec-from-image`/`ui-visual-reviewer`가 추가되며 이미 낡아 있었다 — 상태 표시 스킬로 셀 때마다 재확인하는 습관을 들인다.)
+**구성**: 스킬·서브에이전트·훅으로 이뤄지고, 각각은 ATDD 파이프라인에 직접 참여하는 것과 파이프라인 밖 보조 도구로 나뉜다. 보조 도구는 `skill-stat`·`git-commit-message`·`context-map`·`session-board`·`session-relay`와 기록용 훅들이다.
+
+> **개수를 여기 적지 않는 이유.** 이 자리에는 원래 "스킬 N개 + 서브에이전트 N개 + 훅 N개"가 적혀 있었고, *"이전 판 수치가 이미 낡아 있었다 — 셀 때마다 재확인하는 습관을 들인다"* 는 교훈까지 함께 적혀 있었다. 그런데 **그 교훈을 적은 문장이 다시 낡았다**(2026-09-08 확인: 11·3·4로 적혀 있었고 실제는 14·4·8). 습관은 규율이 되지 못한다. 그래서 개수는 지웠다 — 지금 몇 개인지는 `context-map`·`atdd-status` 스킬이 실행 시점에 답한다. 문서에 남길 수밖에 없는 수치는 `docs/facts-registry.json`에 등록해 `.claude/tests/freshness.test.js`가 감시한다.
 
 **한 문장 정의**: 요구사항 한 줄을 받아 `atdd-orchestrator`가 7단계를 지휘하되, **자신은 아무 일도 직접 하지 않고** 각 단계를 전담 스킬과 서브에이전트에 위임하는 구조.
 
@@ -174,11 +176,12 @@
 
 ```
 .claude/
-├── agents/                      서브에이전트 4개 — 판정 3개 + 실행형(os-builder) 1개
+├── agents/                      판정형 리뷰어 + 실행형 초안 작성자
 │   ├── policy-reviewer.md         인수기준이 요구사항을 커버하는가        (03단계) ★공유
 │   ├── test-reviewer.md           테스트/구현이 정직한가                 (05·06단계) ★공유
-│   └── ui-visual-reviewer.md      목업 이미지 vs 스크린샷 시각 일치       (06단계 UI 게이트)
-├── skills/                      스킬 13개
+│   ├── ui-visual-reviewer.md      목업 이미지 vs 스크린샷 시각 일치       (06단계 UI 게이트)
+│   └── os-builder.md              새 OS 구성요소 초안 작성 (판정하지 않음)  — 파이프라인 밖
+├── skills/
 │   ├── atdd-orchestrator/         7단계 전체를 지휘 (아무것도 직접 하지 않음)
 │   ├── requirement-interview/     01.5 모호한 요구사항 → 인터뷰 브리프 (동결), 그리고 멈춤
 │   ├── spec-decompose/            02 요구사항/브리프 → 인수기준, 그리고 멈춤
@@ -192,10 +195,10 @@
 │   ├── session-relay/             다른 세션에 실시간 발신 (사람 승인 필수) — 파이프라인 밖
 │   ├── skill-stat/                스킬 호출 통계          — 파이프라인 밖
 │   └── git-commit-message/        커밋 메시지 초안        — 파이프라인 밖
-├── context/                     개인 업무 지침 8개 + index.md 레지스트리 (CLAUDE.md가 @import)
+├── context/                     개인 업무 지침 + index.md 레지스트리 (CLAUDE.md가 @import)
 │   ├── README.md                  컨벤션 설명
-│   └── index.md                   실제 지침 파일 레지스트리 (아직 뼈대만, 2026-09-02)
-├── hooks/                       훅 8개 — 모두 best-effort(실패해도 작업을 막지 않음)
+│   └── index.md                   실제 지침 파일 레지스트리 — 여기 등록해야 로드된다
+├── hooks/                       모두 best-effort — 실패해도 작업을 막지 않는다
 │   ├── log-skill-usage.js         PostToolUse/Skill → skill-usage-stats.json
 │   ├── atdd-failure-log.js        PostToolUse/Bash  → atdd-failure-ledger.json  (node --test 출력만 파싱)
 │   ├── os-retro-check.js          Stop              → OS.md 반영 여부를 AI가 되묻게 함 (직접 쓰지 않음, .os-retro-state.json으로 중복 알림 방지)
@@ -203,21 +206,25 @@
 │   ├── session-register.js        SessionStart      → sessions/<id>.json 등록 + 인계 브리핑을 additionalContext로 주입 (800자 상한) + 오래된 파일 정리
 │   ├── session-heartbeat.js       Stop              → 하트비트·턴 수·last_assistant_message 갱신 (stdout 없음 — 다른 Stop 훅의 결정에 끼어들지 않음)
 │   ├── session-close.js           SessionEnd        → endedAt/endReason 기록 (없으면 강제 종료로 보고 stale 표시)
-│   └── session-conflict-warn.js   PreToolUse(Edit|Write) → 살아있는 다른 세션이 같은 파일을 만졌으면 경고만 (deny 하지 않음)
+│   └── session-conflict-warn.js   PreToolUse(Edit|Write|Bash) → 살아있는 다른 세션이 같은 파일을 만졌으면 경고만 (deny 하지 않음)
 ├── lib/
 │   ├── interview-brief.js         검증 가능한 로직 (requirement-interview용) — 브리프 슬롯 결손·플레이스홀더·범위밖 잠금 검사
 │   ├── stats.js                   검증 가능한 로직 (skill-stat용)
 │   ├── context-map.js             검증 가능한 로직 (context-map용) — @import 트리 해석, 집계, 상시 로드 예산
 │   ├── context-inject.js          지침 등록 정합성 + 에이전트 선언 일관성 감사 (주입 자체는 통제 못 함)
+│   ├── freshness.js               문서에 박힌 수치가 실측과 어긋났는지 감사 (등록된 주장만)
 │   ├── write-targets.js           Bash 명령에서 쓰기 대상 경로 추출 (세션 충돌 경고용)
 │   └── session-board.js           검증 가능한 로직 (session-board용) — 생존 판정, 보드 집계, 인계 브리핑 생성, 충돌 탐지
 └── tests/
     ├── stats.test.js              AC-1~8 인수 테스트
-    ├── context-map.test.js        AC-1~10 + 예산 AC-B1~B4
+    ├── context-map.test.js        AC-1~10 + 예산 AC-B1~B5
     ├── context-inject.test.js     AC-1~17 (16·17은 실제 저장소 회귀 감시)
+    ├── freshness.test.js          AC-1~9  (7·8은 실제 저장소 회귀 감시)
     ├── write-targets.test.js      AC-1~18
     └── session-board.test.js      AC-1~14 인수 테스트
 ```
+
+> 이 지도는 **구조를 보여주는 것이지 전수 목록이 아니다.** 지금 실제로 무엇이 있는지는 `atdd-status`·`context-map`이 실행 시점에 낸다.
 
 > **설계 노트**: `lib/`과 `tests/`가 생긴 이유는 05단계 때문이다. 스킬은 마크다운 지시문이라 자동 테스트가 불가능하다. 그래서 **검증할 것은 `lib/`의 코드로, 보여줄 것은 `skills/`의 지시문으로** 나눈다. 앞으로 새 기능도 이 분리를 따른다.
 

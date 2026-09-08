@@ -5,13 +5,13 @@ flowchart TB
         direction TB
         CM["CLAUDE.md<br/>레지스트리 하나만 가리킨다"]:::data
         IDX[".claude/context/index.md<br/>레지스트리 — 나열만 한다"]:::data
-        G["지침 8개<br/>requirement-gate · response-brevity<br/>code-vs-instruction · hook-discipline<br/>commit-habits · docs-diagrams<br/>explanation-style · sensitive-info"]:::data
+        G["지침 9개<br/>requirement-gate · response-brevity<br/>code-vs-instruction · hook-discipline<br/>commit-habits · docs-diagrams<br/>explanation-style · sensitive-info<br/>context-experiment"]:::data
     end
 
     subgraph Reach["② 도달 범위 — 예외 없이 전부 상속받는다"]
         direction TB
         Main["메인 대화 컨텍스트<br/>+ gitStatus · 최근 커밋 5개"]:::data
-        Skills["스킬 13개<br/>같은 대화에서 실행"]:::skill
+        Skills["스킬 14개<br/>같은 대화에서 실행"]:::skill
         Builder["os-builder<br/>지침을 따르겠다고 선언"]:::agent
         Judges["policy-reviewer · test-reviewer<br/>ui-visual-reviewer<br/>독립 판정을 선언"]:::agent
     end
@@ -26,7 +26,7 @@ flowchart TB
 
     Human --> IDX
     CM -->|"@"| IDX
-    IDX -->|"@ 8줄"| G
+    IDX -->|"@ 9줄"| G
     G ==>|"전원 상속<br/>2026-09-07 실측"| Main
     Main --- Skills
     Main --- Builder

@@ -81,21 +81,38 @@ description: 세션을 열 때 이 저장소의 Claude Code가 실제로 얼마�
   .claude/context/index.md (depth 2, 3줄)
   → 아직 등록된 개인 지침 파일이 없습니다 (index.md만 존재).
 
-[항상, 요약만] 스킬 10개 · 서브에이전트 3개
-  description 총 글자 수: 2,340자 (항상 로드)
-  전체 본문 총 글자 수: 스킬 18,500자 · 에이전트 4,200자(격리 컨텍스트, 호출 시에만)
+[항상, 요약만] 스킬 <N>개 · 서브에이전트 <N>개
+  description 총 글자 수: <N>자 (항상 로드)
+  전체 본문 총 글자 수: 스킬 <N>자 · 에이전트 <N>자(격리 컨텍스트, 호출 시에만)
 
-[크기 미측정] MCP 서버 2개
+[크기 미측정] MCP 서버 <N>개
   notion-min (stdio, project) — 이 저장소가 직접 만든 최소 서버, 툴 2개
   notion     (http,  local)   — 기성 서버, 툴 42개
   → 툴 이름 목록은 세션마다 로드되지만 크기는 붙어 봐야 안다. `claude mcp list` / `/mcp`
 
-[컨텍스트 비용 0] 훅 4개 등록
+[컨텍스트 비용 0] 훅 <N>개 등록
   Stop: os-retro-check.js, big-change-commit-check.js
   PostToolUse(Skill): log-skill-usage.js
   PostToolUse(Bash): atdd-failure-log.js
 
-→ 세션 시작 시 항상 로드: CLAUDE.md 계열 2개(총 9줄) + 스킬/에이전트 요약 13개.
-   온디맨드 전체 본문: 스킬 18,500자, 에이전트 4,200자(격리 컨텍스트). 훅 4개는 컨텍스트 비용 0.
-   MCP 서버 2개는 크기 미측정 — 상시 로드 합계에 섞지 않았습니다.
+→ 세션 시작 시 항상 로드: CLAUDE.md 계열 <N>개(총 <N>줄) + 스킬/에이전트 요약 <N>개.
+   온디맨드 전체 본문: 스킬 <N>자, 에이전트 <N>자(격리 컨텍스트). 훅 <N>개는 컨텍스트 비용 0.
+   MCP 서버 <N>개는 크기 미측정 — 상시 로드 합계에 섞지 않았습니다.
 ```
+
+## 마지막에 문서 낡음도 함께 본다
+
+지도를 다 낸 뒤, `.claude/lib/freshness.js`의 `auditFreshness()`를 호출해 **결과를 한 줄로 덧붙인다.**
+
+```bash
+node -e 'const {auditFreshness}=require("./.claude/lib/freshness.js");
+const r=auditFreshness({projectDir:process.cwd()});
+const bad=[...r.stale,...r.missingFile,...r.unknownFact];
+console.log(bad.length?"문서 낡음 "+bad.length+"건":"문서 낡음 없음 (등록 "+r.registered+"건)");
+bad.forEach(s=>console.log(" -",s));'
+```
+
+- 낡은 것이 있으면 **어느 파일의 무엇이 어긋났는지**까지 그대로 옮긴다. 고치라고 시키지는 않는다 — 무엇을 고칠지는 사람이 정한다.
+- 없으면 한 줄로 끝낸다. `auditFreshness()`가 함께 주는 `caveat`("등록된 주장만 본다")를 **초록불일 때 반드시 같이 말한다.** 이 검사는 등록되지 않은 수치를 보지 못하는데, 그 한계를 숨기면 초록불이 "문서가 최신"이라는 보증으로 읽힌다. 이 저장소가 반복해서 겪은 실패다.
+
+왜 여기 붙이는가: 낡음은 테스트로 이미 잠겨 있지만(`node --test .claude/tests/freshness.test.js`), 테스트는 누가 돌려야 드러난다. 컨텍스트 지도를 볼 때는 어차피 같은 수치를 보고 있으므로, 그 자리에서 함께 드러나는 것이 가장 싸다. 훅으로 만들지 않은 이유는 `hook-discipline.md`가 "디스크에 이미 있는 정적 소스를 읽는 일은 훅이 아니라 스킬의 몫"이라고 정하기 때문이다.
