@@ -21,6 +21,8 @@ const {
   textClaimsValue,
   normalizeForMatch,
   checkRegistry,
+  findUnregisteredNumbers,
+  resolveFact,
   loadRegistry,
   auditFreshness,
 } = require("../lib/freshness.js");
@@ -189,4 +191,97 @@ test("AC-9: 결과에 '등록된 것만 본다'는 한계가 함께 실린다", 
   const r = auditFreshness({ projectDir: PROJECT_DIR });
   assert.match(r.caveat, /등록/);
   assert.equal(typeof r.registered, "number");
+});
+
+// --- 미등록 수치 탐지 (2026-09-08 추가) ---
+// 등록부만 보는 검사에는 "새 수치를 적고 등록을 잊으면 조용히 낡는다"는 구멍이 있었다.
+// 범위를 다이어그램으로 좁히면 성립한다는 것을 실측으로 확인하고 추가했다.
+
+/** 다이어그램 하나짜리 가짜 저장소. */
+function diagramRepo(content, name = "x.mmd") {
+  const dir = "/repo/docs/diagrams";
+  return {
+    existsSync: (p) => p === dir,
+    readdirSync: () => [{ name, isFile: () => true, isDirectory: () => false }],
+    readFileSync: () => content,
+  };
+}
+
+test("AC-10: classDef·linkStyle 줄의 색상 hex를 수치로 세지 않는다", () => {
+  const mmd = [
+    'flowchart LR',
+    '    A["아무 숫자 없음"]',
+    '    classDef human fill:#fde68a,stroke:#b45309,color:#111827;',
+    '    linkStyle 7 stroke:#b91c1c,stroke-width:2px;',
+  ].join("\n");
+  const r = findUnregisteredNumbers({ projectDir: "/repo", registry: [], fsOverrides: diagramRepo(mmd) });
+  assert.deepEqual(r.unregistered, []);
+});
+
+test("AC-11: 라벨(큰따옴표) 밖의 숫자는 보지 않는다", () => {
+  // mermaid 문법(노드 id, linkStyle 인덱스)은 사실 주장이 아니다.
+  const r = findUnregisteredNumbers({
+    projectDir: "/repo",
+    registry: [],
+    fsOverrides: diagramRepo('flowchart LR\n    N12 --> N34\n    A["글자만"]'),
+  });
+  assert.deepEqual(r.unregistered, []);
+});
+
+test("AC-12: 단계번호·절참조·연도·날짜·AC범위는 내장 면제된다", () => {
+  const mmd = 'flowchart LR\n    A["05 구현 · 10.3절 · 2026-09-08 · AC-1~17 · 2026"]';
+  const r = findUnregisteredNumbers({ projectDir: "/repo", registry: [], fsOverrides: diagramRepo(mmd) });
+  assert.deepEqual(r.unregistered, []);
+});
+
+test("AC-13: 등록된 패턴이 덮는 숫자는 미등록으로 세지 않는다", () => {
+  const mmd = 'flowchart LR\n    A["스킬 14개"]';
+  const registry = [{ file: "docs/diagrams/x.mmd", fact: "skillCount", format: "plain", pattern: "스킬 {v}개" }];
+  assert.deepEqual(
+    findUnregisteredNumbers({ projectDir: "/repo", registry, fsOverrides: diagramRepo(mmd) }).unregistered,
+    []
+  );
+  // 등록이 없으면 잡혀야 한다 — 이게 이 검사의 존재 이유다
+  assert.equal(
+    findUnregisteredNumbers({ projectDir: "/repo", registry: [], fsOverrides: diagramRepo(mmd) }).unregistered.length,
+    1
+  );
+});
+
+test("AC-14: 면제는 값으로 통과시키되, why가 없으면 거부한다", () => {
+  const mmd = 'flowchart LR\n    A["툴 42개"]';
+  const good = findUnregisteredNumbers({
+    projectDir: "/repo",
+    registry: [],
+    exemptions: [{ file: "docs/diagrams/x.mmd", value: "42", why: "외부 서버 값이라 잴 수 없다" }],
+    fsOverrides: diagramRepo(mmd),
+  });
+  assert.deepEqual(good.unregistered, []);
+  assert.deepEqual(good.badExemptions, []);
+
+  // 이유 없는 면제는 검사를 조용히 무력화하는 가장 쉬운 길이라 거부한다.
+  const bad = findUnregisteredNumbers({
+    projectDir: "/repo",
+    registry: [],
+    exemptions: [{ file: "docs/diagrams/x.mmd", value: "42", why: "  " }],
+    fsOverrides: diagramRepo(mmd),
+  });
+  assert.equal(bad.badExemptions.length, 1);
+  assert.equal(bad.unregistered.length, 1, "why 없는 면제는 면제로 쳐 주지 않는다");
+});
+
+test("AC-15: guidelineChars처럼 여러 개짜리 사실은 key로 지목해야 한다", () => {
+  const facts = { guidelineChars: { "requirement-gate": 1821 } };
+  assert.equal(resolveFact(facts, { fact: "guidelineChars", key: "requirement-gate" }).value, 1821);
+  assert.match(resolveFact(facts, { fact: "guidelineChars" }).error, /key가 필요/);
+  assert.match(resolveFact(facts, { fact: "guidelineChars", key: "없는지침" }).error, /없습니다/);
+});
+
+test("AC-16: 이 저장소의 다이어그램에 미등록·불량면제 수치가 없다", () => {
+  const r = auditFreshness({ projectDir: PROJECT_DIR });
+  assert.deepStrictEqual(
+    [...r.unregistered, ...r.badExemptions],
+    [],
+    "다이어그램에 등록도 면제도 되지 않은 숫자가 있습니다. docs/facts-registry.json 의 claims 또는 exemptions에 넣으세요"
+  );
 });

@@ -18,13 +18,26 @@
  * 그래서 실행 시점에 답할 수 있는 값은 문서에서 **지웠고**, 지우면 목적이 사라지는
  * 자리(개요 다이어그램)만 `docs/facts-registry.json`에 **등록**해 이 파일이 감시한다.
  *
- * ## 이 파일이 검증하지 **못하는** 것
+ * ## 등록을 잊는 것까지 잡는다 (2026-09-08 추가)
  *
- * **등록되지 않은 수치는 감지하지 못한다.** 새 문서에 숫자를 적고 등록을 안 하면
- * 조용히 낡는다. 자유 텍스트에서 "이 숫자가 무엇을 주장하는가"를 알아내는 것은
- * 정규식으로 풀 수 없다 — 이 저장소가 네 번 확인한 사실이다
+ * 처음에는 "등록되지 않은 수치는 감지하지 못한다"를 한계로 적어 두고 시도하지
+ * 않았다. 다시 재 보니 **범위를 좁히면 성립했다.**
+ *
+ *   다이어그램 소스 8개          잔여 숫자 21개   → 성립
+ *   스킬 본문 14개               잔여 숫자 214개  → 불가 (대부분 목록 번호)
+ *
+ * 그래서 다이어그램 안에서는 등록도 면제도 되지 않은 숫자를 찾아낸다
+ * (`findUnregisteredNumbers`). 범위를 다이어그램으로 한정한 것은 타협이 아니다 —
+ * `docs-diagrams.md`가 수치를 허용한 자리가 거기뿐이고, 나머지 문서는 애초에
+ * 수치를 담으면 안 된다.
+ *
+ * ## 그래도 검증하지 **못하는** 것
+ *
+ * **다이어그램 밖의 수치는 보지 않는다.** `OS.md`나 새 `docs/*.md`에 숫자를 넣으면
+ * 여전히 조용히 낡는다. 범위를 넓히면 오탐이 압도해(실측 214개) 검사가 무시당하고,
+ * 무시당하는 검사는 없는 것만 못하다. 자유 텍스트에서 "이 숫자가 무엇을 주장하는가"를
+ * 알아내는 것은 정규식으로 풀 수 없다 — 이 저장소가 네 번 확인한 사실이다
  * (`docs/context-ab-test.md:62-63, 121-125, 190-196` 및 실험 4).
- * 그래서 시도하지 않고 한계로 남긴다. 등록부를 채우는 것은 사람의 몫이다.
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -48,6 +61,10 @@ const KNOWN_FACTS = [
   "onDemandTotal",
   "onDemandSkillsChars",
   "onDemandAgentsChars",
+  // 지침 하나하나의 자수. 등록부가 `"fact": "guidelineChars", "key": "requirement-gate"`
+  // 형태로 어느 지침인지 지목한다. 08 개요가 지침별 자수를 나열하는데 지금까지
+  // 아무도 감시하지 않았다 — 미등록 수치 탐지가 처음 드러낸 사각지대다.
+  "guidelineChars",
 ];
 
 /**
@@ -103,7 +120,16 @@ function collectFacts({ projectDir, fsOverrides = {} }) {
 
   const { testFileCount, testCount } = countTests(path.join(projectDir, ".claude", "tests"), fsOverrides);
 
+  // 지침 이름 → 자수. 파일명에서 .md를 떼어 등록부가 부르기 쉬운 키로 쓴다.
+  const guidelineChars = {};
+  for (const node of map.importTree.nodes) {
+    if (node.depth > 2 && !node.missing && !node.cycle && !node.truncated) {
+      guidelineChars[path.basename(node.path, ".md")] = node.chars;
+    }
+  }
+
   return {
+    guidelineChars,
     skillCount: map.skills.length,
     agentCount: map.agents.length,
     hookCount: map.hooks.length,
@@ -125,6 +151,25 @@ function collectFacts({ projectDir, fsOverrides = {} }) {
 /** 숫자를 등록부가 지정한 표기로 바꾼다. `14`와 `15,259`는 다른 문자열이다. */
 function formatFact(value, format) {
   return format === "comma" ? value.toLocaleString("en-US") : String(value);
+}
+
+/**
+ * 등록 항목이 가리키는 실측값을 꺼낸다.
+ *
+ * 대부분의 사실은 숫자 하나지만 `guidelineChars`처럼 **여러 개짜리**인 것이 있다.
+ * 그런 사실은 등록부가 `key`로 어느 것인지 지목한다. 지목이 없거나 없는 이름을
+ * 가리키면 조용히 통과시키지 않고 이유를 돌려준다 — 오타 하나로 검사가 사라지는
+ * 것이 이 저장소가 반복해 겪은 실패다.
+ */
+function resolveFact(facts, entry) {
+  const value = facts[entry.fact];
+  if (typeof value === "number") return { value };
+  if (value && typeof value === "object") {
+    if (!entry.key) return { error: `"${entry.fact}"는 여러 개짜리 사실이라 key가 필요합니다` };
+    if (!(entry.key in value)) return { error: `"${entry.fact}"에 "${entry.key}"가 없습니다` };
+    return { value: value[entry.key] };
+  }
+  return { error: `"${entry.fact}"의 실측값을 찾지 못했습니다` };
 }
 
 /**
@@ -200,7 +245,12 @@ function checkRegistry({ facts, registry, projectDir, fsOverrides = {} }) {
       continue;
     }
 
-    const expected = formatFact(facts[entry.fact], entry.format);
+    const resolved = resolveFact(facts, entry);
+    if (resolved.error) {
+      result.unknownFact.push(`${label}: ${resolved.error}`);
+      continue;
+    }
+    const expected = formatFact(resolved.value, entry.format);
     const haystack = normalizeForMatch(text, entry.file);
     const needle = entry.pattern ? normalizeForMatch(entry.pattern, entry.file) : undefined;
     if (textClaimsValue(haystack, expected, needle)) {
@@ -211,6 +261,88 @@ function checkRegistry({ facts, registry, projectDir, fsOverrides = {} }) {
     }
   }
   return result;
+}
+
+// --- 미등록 수치 탐지 -------------------------------------------------------
+//
+// 등록부만 보는 검사에는 큰 구멍이 있다: **새 수치를 적고 등록을 잊으면 조용히 낡는다.**
+// 그 구멍을 메우려면 "문서에 있는데 등록되지 않은 숫자"를 찾아야 하는데, 순진하게
+// 모든 숫자를 세면 오탐이 압도한다. 2026-09-08 실측:
+//
+//   범위                          잔여 숫자
+//   docs/diagrams/*.mmd (8개)     21개   → 성립
+//   .claude/skills/*/SKILL.md     214개  → 불가 (대부분 목록 번호)
+//
+// 그래서 **다이어그램만** 본다. 타협이 아니라 `docs-diagrams.md`가 수치를 허용한
+// 자리가 거기뿐이기 때문이다. 나머지 문서는 애초에 수치를 담으면 안 된다.
+
+/** 색상 hex(`#111827`)와 스타일 수치가 사는 줄. 여기 숫자는 사실 주장이 아니다. */
+const STYLE_LINE = /^\s*(classDef|linkStyle|style |%%)/;
+/** mermaid 라벨은 큰따옴표 안에 있다. 그 밖은 문법이라 보지 않는다. */
+const LABEL = /"([^"]*)"/g;
+const NUMBER = /\d[\d,]*(?:\.\d+)?/g;
+/** 라벨 안이지만 사실 주장이 아닌 것들. 먼저 지운 뒤 숫자를 센다. */
+const NON_CLAIM_SPANS = [
+  /20\d\d-\d\d-\d\d/g, // 날짜
+  /AC-[\dA-Za-z]+(?:~[\dA-Za-z]+)?/g, // AC 번호·범위 (AC-1~17, AC-B1~B5)
+];
+/** 값 자체로 판별되는 면제. 저장소마다 같은 모양이라 코드에 둔다. */
+const BUILTIN_EXEMPT = [
+  { re: /^0[1-9]$/, why: "파이프라인 단계 번호" },
+  { re: /^\d{1,2}\.\d$/, why: "OS.md 절 참조" },
+  { re: /^20\d\d$/, why: "연도" },
+];
+
+/**
+ * 다이어그램에서 등록되지도 면제되지도 않은 숫자를 찾는다.
+ *
+ * `exemptions`는 사람이 "이 숫자는 사실 주장이 아니다"라고 선언한 목록이며
+ * **`why`가 없으면 거부한다.** 이유 없는 면제는 검사를 조용히 무력화하는 가장 쉬운
+ * 길이고, 그렇게 무력화된 검사는 초록불이라 아무도 의심하지 않는다.
+ */
+function findUnregisteredNumbers({ projectDir, registry, exemptions = [], fsOverrides = {} }) {
+  const { existsSync = fs.existsSync, readdirSync = fs.readdirSync, readFileSync = fs.readFileSync } = fsOverrides;
+  const unregistered = [];
+  const badExemptions = [];
+
+  for (const ex of exemptions) {
+    if (!ex.why || !String(ex.why).trim()) {
+      badExemptions.push(`${ex.file || "?"} 의 "${ex.value}" 면제에 why가 없습니다`);
+    }
+  }
+
+  const diagramsDir = path.join(projectDir, "docs", "diagrams");
+  if (!existsSync(diagramsDir)) return { unregistered, badExemptions };
+
+  const files = readdirSync(diagramsDir, { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith(".mmd"))
+    .map((e) => e.name)
+    .sort();
+
+  for (const name of files) {
+    const rel = path.posix.join("docs", "diagrams", name);
+    const claims = registry.filter((c) => c.file === rel);
+    const exempt = exemptions.filter((e) => e.file === rel && e.why && String(e.why).trim());
+    const text = readFileSync(path.join(diagramsDir, name), "utf-8");
+
+    for (const line of text.split("\n")) {
+      if (STYLE_LINE.test(line)) continue;
+      for (const [, label] of line.matchAll(LABEL)) {
+        let scrubbed = label;
+        for (const re of NON_CLAIM_SPANS) scrubbed = scrubbed.replace(re, "");
+
+        for (const [num] of scrubbed.matchAll(NUMBER)) {
+          if (BUILTIN_EXEMPT.some((b) => b.re.test(num))) continue;
+          if (exempt.some((e) => String(e.value) === num)) continue;
+          // 등록된 주장이 이 라벨 안에서 이 숫자를 덮고 있으면 미등록이 아니다.
+          const covered = claims.some((c) => c.pattern && label.includes(c.pattern.replace("{v}", num)));
+          if (covered) continue;
+          unregistered.push(`${rel}: "${num}" 이(가) 등록도 면제도 되지 않았습니다 — ${label.slice(0, 40)}`);
+        }
+      }
+    }
+  }
+  return { unregistered, badExemptions };
 }
 
 /**
@@ -228,20 +360,35 @@ function loadRegistry({ projectDir, fsOverrides = {} }) {
   return Array.isArray(parsed) ? parsed : parsed.claims || [];
 }
 
+/** 면제 목록을 읽는다. 등록부와 같은 파일에 두어 "무엇을 보고 무엇을 안 보는가"가 한 화면에 있게 한다. */
+function loadExemptions({ projectDir, fsOverrides = {} }) {
+  const { existsSync = fs.existsSync, readFileSync = fs.readFileSync } = fsOverrides;
+  const registryPath = path.join(projectDir, "docs", "facts-registry.json");
+  if (!existsSync(registryPath)) return [];
+  const parsed = JSON.parse(readFileSync(registryPath, "utf-8"));
+  return Array.isArray(parsed) ? [] : parsed.exemptions || [];
+}
+
 /** 스킬·테스트가 함께 쓰는 한 줄 진입점. */
 function auditFreshness({ projectDir, fsOverrides = {} }) {
   const facts = collectFacts({ projectDir, fsOverrides });
   const registry = loadRegistry({ projectDir, fsOverrides });
+  const exemptions = loadExemptions({ projectDir, fsOverrides });
   const check = checkRegistry({ facts, registry, projectDir, fsOverrides });
+  const scan = findUnregisteredNumbers({ projectDir, registry, exemptions, fsOverrides });
   return {
     facts,
     ...check,
+    ...scan,
     registered: registry.length,
-    // 위반 0개가 "문서가 최신"이라는 뜻이 아니다. 등록되지 않은 수치는 보지 않는다.
-    // context-inject.js가 같은 이유로 결과에 한계를 함께 싣는다 — 그 관례를 따른다.
+    exempted: exemptions.length,
+    // 한계를 결과에 함께 싣는다 — context-inject.js가 같은 이유로 그렇게 한다.
+    // 다만 실제 능력보다 비관적으로 적는 것도 거짓이다. 이제 다이어그램 안에서는
+    // 등록을 잊은 수치까지 잡는다. 못 보는 것은 다이어그램 **밖**이다.
     caveat:
-      "이 검사는 docs/facts-registry.json 에 등록된 주장만 봅니다. " +
-      "등록되지 않은 수치가 문서에 있으면 낡아도 드러나지 않습니다.",
+      "이 검사는 docs/diagrams/*.mmd 안에서는 등록되지 않은 수치까지 찾아냅니다. " +
+      "그 밖의 문서(OS.md, docs/*.md, SKILL.md)에 박힌 수치는 보지 않습니다 — " +
+      "스킬 본문은 목록 번호 때문에 오탐이 압도해(실측 214개) 검사가 성립하지 않습니다.",
   };
 }
 
@@ -255,5 +402,8 @@ module.exports = {
   normalizeForMatch,
   checkRegistry,
   loadRegistry,
+  loadExemptions,
+  resolveFact,
+  findUnregisteredNumbers,
   auditFreshness,
 };
